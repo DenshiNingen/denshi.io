@@ -63,21 +63,28 @@ export default function Home() {
       });
       requestAnimationFrame(animate);
     }
-
+  
+    function resizeCanvas() {
+      if (canvas) {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        // Log dimensions for debugging
+        console.log(`Canvas resized to: ${canvas.width}x${canvas.height}`);
+      }
+    }
+  
+    // Ensure resizeCanvas is called after the component is mounted
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas(); // Initial call to set dimensions
+  
+    // Initialize particles and start animation
     init();
     animate();
-
-    // Resize canvas to match the window size
-    const resizeCanvas = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
-
+  
+    // Cleanup on component unmount
     return () => {
       window.removeEventListener('resize', resizeCanvas);
+      ctx?.clearRect(0, 0, canvas.width, canvas.height);
     };
   }, []);
 
