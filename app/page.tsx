@@ -1,17 +1,30 @@
 "use client"; // This line marks the file as a Client Component
 
 import { useEffect } from 'react';
+import Image from 'next/image';
 
 export default function Home() {
   useEffect(() => {
     // Particle animation setup
-    const canvas = document.getElementById('space-canvas');
+    const canvas = document.getElementById('space-canvas') as HTMLCanvasElement;
+    if (!canvas) {
+      console.error("Canvas element not found");
+      return;
+    }
     const ctx = canvas.getContext('2d');
-
-    const particlesArray = [];
+    if (!ctx) {
+      console.error("Unable to get canvas context");
+      return;
+    }
+    const particlesArray: Particle[] = [];
     const numberOfParticles = 100;
 
     class Particle {
+      x: number;
+      y: number;
+      size: number;
+      speedX: number;
+      speedY: number;
       constructor() {
         this.x = Math.random() * canvas.width;
         this.y = Math.random() * canvas.height;
@@ -28,11 +41,11 @@ export default function Home() {
         if (this.y < 0 || this.y > canvas.height) this.y = Math.random() * canvas.height;
       }
       draw() {
-        ctx.fillStyle = 'white';
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.closePath();
-        ctx.fill();
+        ctx!.fillStyle = 'white';
+        ctx!.beginPath();
+        ctx!.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx!.closePath();
+        ctx!.fill();
       }
     }
 
@@ -43,7 +56,7 @@ export default function Home() {
     }
 
     function animate() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx!.clearRect(0, 0, canvas.width, canvas.height);
       particlesArray.forEach(particle => {
         particle.update();
         particle.draw();
@@ -88,9 +101,14 @@ export default function Home() {
         zIndex: 1,  // Behind content, but above noise background
       }}></canvas>
 
-      <img src="/denshi_ningen_logo.png" className="logo" style={{
-        height: "20vh", width: "auto", zIndex: 2,
-      }} />
+      <Image
+        src="/denshi_ningen_logo.png"
+        alt="Denshi Ningen Logo"
+        width={200} // Adjust width as necessary
+        height={100} // Adjust height as necessary
+        className="logo"
+        style={{ zIndex: 2 }}
+      />
 
       <h1 className="name" style={{
         fontFamily: "Orbitron",
