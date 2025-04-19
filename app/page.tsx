@@ -93,11 +93,6 @@ export default function Home() {
       className="relative flex h-screen w-screen flex-col items-center justify-center
         gap-8 md:px-[26vw] overflow-hidden"
     >
-      <div style={{
-        position: "absolute", height: "100%", width: "100%",
-        backgroundImage: "url(/noise.png)", backgroundRepeat: "repeat",
-        backgroundSize: "10%", opacity: "0.3",
-      }}></div>
 
       <canvas id="space-canvas" style={{
         position: "absolute",
