@@ -8,6 +8,16 @@ export interface Planet {
   isSocialPlanet?: boolean; // Special planets from logo
   icon?: string; // Icon identifier for social planets
   isDummy?: boolean; // Decorative planets without interaction
+  isVisitor?: boolean; // Real-time visitor planet
+  isCurrentUser?: boolean; // Is this the current user's planet
+  // Visitor-specific info
+  visitorInfo?: {
+    browser: string;
+    device: string;
+    country: string;
+    flag: string;
+    joinedAt: number;
+  };
 }
 
 // Social link planets (from logo balls)

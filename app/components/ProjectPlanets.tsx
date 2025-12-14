@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { allPlanets, Planet } from '../data/planets';
+import { useVisitors, Visitor } from '../hooks/useVisitors';
+import MatrixText from './MatrixText';
 
 // Simple SVG icons for social planets
 function getSocialIcon(icon: string): React.ReactNode {
@@ -27,6 +29,19 @@ function getSocialIcon(icon: string): React.ReactNode {
     default:
       return null;
   }
+}
+
+// Helper to format time ago
+function getTimeAgo(timestamp: number): string {
+  const now = Date.now();
+  const seconds = Math.floor((now - timestamp) / 1000);
+  
+  if (seconds < 60) return 'Just arrived';
+  if (seconds < 120) return '1 min ago';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} mins ago`;
+  if (seconds < 7200) return '1 hour ago';
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
+  return 'Long time explorer';
 }
 
 interface PlanetData {
@@ -76,6 +91,11 @@ export default function ProjectPlanets({
   const [orbitRadii, setOrbitRadii] = useState<number[]>([]);
   const [socialOrbiting, setSocialOrbiting] = useState(false);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const [highlightCurrentUser, setHighlightCurrentUser] = useState(false);
+  const [showCounter, setShowCounter] = useState(false);
+  
+  // Real-time visitors
+  const { visitors, visitorCount, isConnected } = useVisitors();
   
   // Use refs for animation state to avoid re-render issues
   const planetsRef = useRef<PlanetData[]>([]);
@@ -194,6 +214,78 @@ export default function ProjectPlanets({
     window.addEventListener('resize', initPlanets);
     return () => window.removeEventListener('resize', initPlanets);
   }, []);
+
+  // Convert visitors to planets and add them to the solar system
+  const visitorPlanetsRef = useRef<Map<string, PlanetData>>(new Map());
+  
+  useEffect(() => {
+    if (!visible || visitors.length === 0) return;
+    
+    const screenSize = Math.min(window.innerWidth, window.innerHeight);
+    const isSmallScreen = screenSize < 600;
+    
+    // Visitor orbit zone - outermost ring
+    const visitorBaseRadius = screenSize * (isSmallScreen ? 0.35 : 0.38);
+    const visitorMaxRadius = screenSize * (isSmallScreen ? 0.48 : 0.5);
+    
+    // Update visitor planets
+    const currentVisitorIds = new Set(visitors.map(v => v.id));
+    const existingVisitorIds = new Set(visitorPlanetsRef.current.keys());
+    
+    // Remove visitors that left
+    existingVisitorIds.forEach(id => {
+      if (!currentVisitorIds.has(id)) {
+        visitorPlanetsRef.current.delete(id);
+        // Remove from planetsRef
+        planetsRef.current = planetsRef.current.filter(p => p.planet.id !== id);
+      }
+    });
+    
+    // Add new visitors
+    visitors.forEach((visitor, index) => {
+      if (!visitorPlanetsRef.current.has(visitor.id)) {
+        // Calculate orbit for new visitor
+        const radiusVariation = (Math.random() * 0.5 + 0.5); // 50-100% of available range
+        const radius = visitorBaseRadius + (visitorMaxRadius - visitorBaseRadius) * radiusVariation;
+        
+        // Random starting angle
+        const startAngle = Math.random() * Math.PI * 2;
+        
+        // Orbit speed - slower for outer orbits
+        const orbitSpeed = 60 + Math.random() * 40;
+        
+        const visitorPlanet: Planet = {
+          id: visitor.id,
+          name: visitor.isCurrentUser ? '✨ You' : visitor.name,
+          description: visitor.isCurrentUser ? 'Your presence in this universe' : 'Exploring the cosmos',
+          color: visitor.color,
+          mass: 1.5,
+          isVisitor: true,
+          isCurrentUser: visitor.isCurrentUser,
+          visitorInfo: {
+            browser: visitor.browser,
+            device: visitor.device,
+            country: visitor.country,
+            flag: visitor.flag,
+            joinedAt: visitor.joinedAt,
+          },
+        };
+        
+        const planetData: PlanetData = {
+          planet: visitorPlanet,
+          orbitRadius: radius,
+          orbitSpeed,
+          angle: startAngle,
+          mass: 1.5,
+          size: isSmallScreen ? 6 : 8,
+          isFreed: false,
+        };
+        
+        visitorPlanetsRef.current.set(visitor.id, planetData);
+        planetsRef.current.push(planetData);
+      }
+    });
+  }, [visitors, visible]);
 
   // Start social planets orbiting after delay
   useEffect(() => {
@@ -473,6 +565,13 @@ export default function ProjectPlanets({
     return () => clearTimeout(timer);
   }, [visible]);
 
+  // Show visitor counter after planets and connections are visible
+  useEffect(() => {
+    if (!connectionsVisible || !isConnected) return;
+    const timer = setTimeout(() => setShowCounter(true), 800);
+    return () => clearTimeout(timer);
+  }, [connectionsVisible, isConnected]);
+
   const handleClick = useCallback((e: React.MouseEvent, planet: Planet) => {
     // Only process if no dragging occurred
     if (hasDraggedRef.current) return;
@@ -537,6 +636,8 @@ export default function ProjectPlanets({
         const planetSize = planetData?.size || 10;
         const isSocial = planet.isSocialPlanet;
         const isDummy = planet.isDummy;
+        const isVisitor = planet.isVisitor;
+        const isCurrentUser = planet.isCurrentUser;
         
         // Calculate tooltip position based on planet position
         const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1000;
@@ -554,7 +655,7 @@ export default function ProjectPlanets({
         return (
         <div
           key={planet.id}
-          className={`planet ${visible ? 'visible' : ''} ${isDragging ? 'dragging' : ''} ${isNear ? 'near' : ''} ${isFreed ? 'freed' : ''} ${isSocial ? 'social-planet' : ''} ${isDummy ? 'dummy-planet' : ''}`}
+          className={`planet ${visible ? 'visible' : ''} ${isDragging ? 'dragging' : ''} ${isNear ? 'near' : ''} ${isFreed ? 'freed' : ''} ${isSocial ? 'social-planet' : ''} ${isDummy ? 'dummy-planet' : ''} ${isVisitor ? 'visitor-planet' : ''} ${isCurrentUser ? 'current-user-planet' : ''} ${isCurrentUser && highlightCurrentUser ? 'highlight-me' : ''}`}
           style={{
             transform: `translate(${x}px, ${y}px) translate(-50%, -50%)`,
             '--planet-size': `${planetSize}px`,
@@ -593,7 +694,7 @@ export default function ProjectPlanets({
           </div>
 
           {/* Tooltip - only for non-dummy planets */}
-          {!isDummy && (
+          {!isDummy && !isVisitor && (
             <div className={`planet-tooltip tooltip-${tooltipPosition} tooltip-align-${tooltipAlign} ${hoveredProject === planet.id ? 'visible' : ''}`}>
               <div className="tooltip-name">{planet.name}</div>
               <div className="tooltip-desc">{planet.description}</div>
@@ -605,9 +706,65 @@ export default function ProjectPlanets({
               </div>
             </div>
           )}
+          
+          {/* Visitor tooltip */}
+          {isVisitor && (
+            <div className={`planet-tooltip visitor-tooltip tooltip-${tooltipPosition} tooltip-align-${tooltipAlign} ${hoveredProject === planet.id ? 'visible' : ''}`}>
+              <div className="tooltip-name">{planet.name}</div>
+              <div className="tooltip-desc">{planet.description}</div>
+              {planet.visitorInfo && (
+                <div className="visitor-info">
+                  <div className="visitor-info-row">
+                    <span>{planet.visitorInfo.flag}</span>
+                    <span>{planet.visitorInfo.device}</span>
+                  </div>
+                  <div className="visitor-info-row">
+                    <span>🌐 {planet.visitorInfo.browser}</span>
+                  </div>
+                  <div className="visitor-time">
+                    {getTimeAgo(planet.visitorInfo.joinedAt)}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
         );
       })}
+
+      {/* Visitor counter */}
+      {showCounter && visitorCount > 0 && (
+        <div 
+          className={`visitor-counter ${showCounter ? 'visible' : ''}`}
+          onMouseEnter={() => setHighlightCurrentUser(true)}
+          onMouseLeave={() => setHighlightCurrentUser(false)}
+        >
+          <div className="visitor-count">
+            <MatrixText 
+              text={visitorCount.toString()} 
+              startDelay={0}
+              charRevealTime={80}
+              scrambleIterations={5}
+            />
+          </div>
+          <div className="visitor-label">
+            <MatrixText 
+              text={visitorCount === 1 ? 'explorer' : 'explorers'} 
+              startDelay={200}
+              charRevealTime={40}
+              scrambleIterations={3}
+            />
+          </div>
+          <div className="visitor-hint">
+            <MatrixText 
+              text="hover to find yourself" 
+              startDelay={600}
+              charRevealTime={30}
+              scrambleIterations={2}
+            />
+          </div>
+        </div>
+      )}
 
       <style jsx>{`
         .project-planets {
@@ -927,6 +1084,193 @@ export default function ProjectPlanets({
           padding-top: 6px;
         }
 
+        /* Visitor planets - white/ethereal appearance */
+        .visitor-planet .planet-core {
+          animation: pulse-visitor 3s ease-in-out infinite;
+          background: radial-gradient(circle at 30% 30%, #FFFFFF, #E0E0E0, #CCCCCC) !important;
+        }
+
+        .visitor-planet .planet-glow {
+          opacity: 0.4;
+          filter: blur(10px);
+          background: rgba(255, 255, 255, 0.8) !important;
+        }
+
+        @keyframes pulse-visitor {
+          0%, 100% { 
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.6); 
+            opacity: 0.7;
+          }
+          50% { 
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.9); 
+            opacity: 1;
+          }
+        }
+
+        /* Current user's planet - special highlight */
+        .current-user-planet .planet-core {
+          animation: pulse-current-user 2s ease-in-out infinite;
+          background: radial-gradient(circle at 30% 30%, #FFFFFF, #FFE4B5, #FFD700) !important;
+          border: 2px solid rgba(255, 215, 0, 0.8) !important;
+        }
+
+        .current-user-planet .planet-glow {
+          opacity: 0.6;
+          filter: blur(15px);
+          background: rgba(255, 215, 0, 0.5) !important;
+        }
+
+        @keyframes pulse-current-user {
+          0%, 100% { 
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.8); 
+            transform: scale(1);
+          }
+          50% { 
+            box-shadow: 0 0 30px rgba(255, 215, 0, 1); 
+            transform: scale(1.1);
+          }
+        }
+
+        /* Highlight current user when hovering counter */
+        .highlight-me {
+          z-index: 9999 !important;
+        }
+
+        .highlight-me .planet-core {
+          animation: pulse-highlight 0.5s ease-in-out infinite !important;
+          transform: scale(2) !important;
+        }
+
+        .highlight-me .planet-glow {
+          opacity: 1 !important;
+          transform: translate(-50%, -50%) scale(3) !important;
+          filter: blur(20px) !important;
+        }
+
+        @keyframes pulse-highlight {
+          0%, 100% { 
+            box-shadow: 0 0 40px rgba(255, 215, 0, 1), 0 0 80px rgba(255, 215, 0, 0.5); 
+          }
+          50% { 
+            box-shadow: 0 0 60px rgba(255, 215, 0, 1), 0 0 120px rgba(255, 215, 0, 0.7); 
+          }
+        }
+
+        .visitor-tooltip {
+          background: rgba(20, 20, 30, 0.95) !important;
+          border-color: rgba(255, 255, 255, 0.3) !important;
+        }
+
+        .visitor-info {
+          margin-top: 8px;
+          padding-top: 8px;
+          border-top: 1px solid rgba(255, 255, 255, 0.15);
+          font-family: 'Orbitron', monospace;
+        }
+
+        .visitor-info-row {
+          display: flex;
+          gap: 8px;
+          font-size: 10px;
+          color: rgba(255, 255, 255, 0.7);
+          margin-bottom: 4px;
+        }
+
+        .visitor-time {
+          font-size: 9px;
+          color: rgba(255, 255, 255, 0.4);
+          margin-top: 4px;
+          font-style: italic;
+        }
+
+        /* Visitor counter */
+        .visitor-counter {
+          position: fixed;
+          bottom: 15px;
+          right: 15px;
+          background: rgba(0, 0, 0, 0.7);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 8px;
+          padding: 8px 12px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 2px;
+          pointer-events: auto;
+          z-index: 100;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          opacity: 0;
+          transform: translateY(20px) scale(0.9);
+        }
+
+        .visitor-counter.visible {
+          animation: counter-appear 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+
+        @keyframes counter-appear {
+          0% {
+            opacity: 0;
+            transform: translateY(20px) scale(0.9);
+            box-shadow: 0 0 0 rgba(255, 255, 255, 0);
+          }
+          50% {
+            opacity: 1;
+            box-shadow: 0 0 30px rgba(255, 255, 255, 0.3);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            box-shadow: 0 0 0 rgba(255, 255, 255, 0);
+          }
+        }
+
+        .visitor-counter:hover {
+          background: rgba(255, 215, 0, 0.1);
+          border-color: rgba(255, 215, 0, 0.4);
+          transform: scale(1.02);
+        }
+
+        .visitor-counter:hover .visitor-count {
+          color: #FFD700;
+          text-shadow: 0 0 10px rgba(255, 215, 0, 0.6);
+        }
+
+        .visitor-counter:hover .visitor-label {
+          color: rgba(255, 215, 0, 0.7);
+        }
+
+        .visitor-count {
+          font-family: 'Orbitron', monospace;
+          font-size: 16px;
+          font-weight: bold;
+          color: white;
+          text-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+          line-height: 1;
+        }
+
+        .visitor-label {
+          font-family: 'Orbitron', monospace;
+          font-size: 8px;
+          color: rgba(255, 255, 255, 0.5);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .visitor-hint {
+          font-family: 'Orbitron', monospace;
+          font-size: 6px;
+          color: rgba(255, 255, 255, 0.25);
+          margin-top: 2px;
+          opacity: 0;
+          transition: opacity 0.3s ease;
+        }
+
+        .visitor-counter:hover .visitor-hint {
+          opacity: 1;
+          color: rgba(255, 215, 0, 0.5);
+        }
+
         @media (max-width: 600px) {
           .planet-tooltip {
             padding: 8px 10px;
@@ -939,6 +1283,20 @@ export default function ProjectPlanets({
           }
           .tooltip-hint {
             font-size: 8px;
+          }
+          .visitor-counter {
+            bottom: 8px;
+            right: 8px;
+            padding: 6px 10px;
+          }
+          .visitor-count {
+            font-size: 14px;
+          }
+          .visitor-label {
+            font-size: 7px;
+          }
+          .visitor-hint {
+            font-size: 5px;
           }
         }
       `}</style>
