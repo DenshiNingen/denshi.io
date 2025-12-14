@@ -26,7 +26,26 @@ export default function Home() {
   const [showText, setShowText] = useState(false);
   const [showSolarSystem, setShowSolarSystem] = useState(false);
   const [logoSize, setLogoSize] = useState(240);
+  const [animationsSkipped, setAnimationsSkipped] = useState(false);
+  const [skipFadeIn, setSkipFadeIn] = useState(false);
   const planetsRef = useRef<Planet[]>([]);
+  const animationsSkippedRef = useRef(false);
+
+  // Skip all animations on double click with smooth fade-in
+  const handleDoubleClick = useCallback(() => {
+    if (animationsSkipped) return;
+    animationsSkippedRef.current = true;
+    setAnimationsSkipped(true);
+    
+    // Trigger fade-in animation
+    setSkipFadeIn(true);
+    
+    // Show everything with a slight delay for the fade effect
+    setTimeout(() => {
+      setShowText(true);
+      setShowSolarSystem(true);
+    }, 50);
+  }, [animationsSkipped]);
 
   // Set logo size based on screen size only (for layout)
   useEffect(() => {
@@ -61,10 +80,11 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    // Start text animation after logo animation
+    // Start text animation after logo animation (unless skipped)
+    if (animationsSkipped) return;
     const timer = setTimeout(() => setShowText(true), 2800);
     return () => clearTimeout(timer);
-  }, []);
+  }, [animationsSkipped]);
 
   useEffect(() => {
     // Particle animation setup with physics
@@ -88,6 +108,9 @@ export default function Home() {
 
     // Get planets from ref (set by ProjectPlanets)
     const getPlanets = () => planetsRef.current;
+    
+    // Check if animations were skipped
+    const isSkipped = () => animationsSkippedRef.current;
 
     class Particle {
       x: number;
@@ -179,8 +202,10 @@ export default function Home() {
         if (this.y < -10) this.y = canvas.height + 10;
         if (this.y > canvas.height + 10) this.y = -10;
         
-        // Progressive fade in
-        if (elapsed > startDelay + this.fadeInDelay) {
+        // Progressive fade in (instant if skipped)
+        if (isSkipped()) {
+          this.opacity = this.targetOpacity;
+        } else if (elapsed > startDelay + this.fadeInDelay) {
           const fadeProgress = Math.min(1, (elapsed - startDelay - this.fadeInDelay) / 1200);
           this.opacity = fadeProgress * this.targetOpacity;
         }
@@ -223,10 +248,27 @@ export default function Home() {
         particlesArray.push(new Particle(i));
       }
       
-      // Activate physics after stars and planets appear
-      setTimeout(() => {
-        physicsActive = true;
-      }, 8000);
+      // Activate physics after stars and planets appear (or immediately if skipped)
+      const checkAndActivatePhysics = () => {
+        if (isSkipped()) {
+          physicsActive = true;
+        } else {
+          setTimeout(() => {
+            physicsActive = true;
+          }, 8000);
+        }
+      };
+      checkAndActivatePhysics();
+      
+      // Also check periodically in case skip happens after init
+      const interval = setInterval(() => {
+        if (isSkipped() && !physicsActive) {
+          physicsActive = true;
+          clearInterval(interval);
+        }
+      }, 100);
+      
+      setTimeout(() => clearInterval(interval), 10000);
     }
 
     function animate(timestamp: number) {
@@ -261,8 +303,9 @@ export default function Home() {
 
   return (
     <main
-      className="relative flex h-screen w-screen flex-col items-center justify-center
-        gap-8 md:px-[26vw] overflow-hidden"
+      className={`relative flex h-screen w-screen flex-col items-center justify-center
+        gap-8 md:px-[26vw] overflow-hidden ${skipFadeIn ? 'skip-fade-in' : ''}`}
+      onDoubleClick={handleDoubleClick}
     >
       <canvas id="space-canvas" style={{
         position: "absolute",
@@ -274,8 +317,8 @@ export default function Home() {
       }}></canvas>
 
       <ProjectPlanets 
-        startDelay={showSolarSystem ? 0 : 6400} 
-        socialOrbitDelay={500} // Social planets stay still for 500ms after appearing, then start orbiting
+        startDelay={animationsSkipped || showSolarSystem ? 0 : 6400} 
+        socialOrbitDelay={animationsSkipped ? 0 : 500} // Social planets stay still for 500ms after appearing, then start orbiting
         onPositionsGenerated={handlePositionsGenerated} 
       />
 
@@ -287,6 +330,7 @@ export default function Home() {
         size={logoSize} 
         onAnimationComplete={handleLogoAnimationComplete}
         onBallsInPosition={handleTransitionToSolarSystem}
+        skipAnimation={animationsSkipped}
       />
 
       <div 
@@ -337,6 +381,25 @@ export default function Home() {
           )}
         </p>
       </div>
+
+      <style jsx>{`
+        @keyframes skipFadeIn {
+          from {
+            opacity: 0;
+            transform: scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+        
+        .skip-fade-in :global(.project-planets),
+        .skip-fade-in :global(.sun-container),
+        .skip-fade-in .header-text {
+          animation: skipFadeIn 0.6s ease-out forwards;
+        }
+      `}</style>
     </main>
   );
 }

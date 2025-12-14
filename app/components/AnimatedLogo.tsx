@@ -67,6 +67,7 @@ interface AnimatedLogoProps {
   svgPath?: string;
   onAnimationComplete?: () => void;
   onBallsInPosition?: () => void;
+  skipAnimation?: boolean;
 }
 
 interface BallState {
@@ -80,10 +81,12 @@ export default function AnimatedLogo({
   svgPath = '/denshi_ningen_logo.svg',
   onAnimationComplete,
   onBallsInPosition,
+  skipAnimation = false,
 }: AnimatedLogoProps) {
   const [svgData, setSvgData] = useState<LogoData | null>(null);
   const [phase, setPhase] = useState<'loading' | 'building' | 'built' | 'transitioning' | 'arrived' | 'hidden'>('loading');
   const [screenSize, setScreenSize] = useState({ width: 1000, height: 800 });
+  const hasSkippedRef = useRef(false);
   
   // Ball positions - start at null, set when logo is built
   const [redBall, setRedBall] = useState<BallState | null>(null);
@@ -100,6 +103,16 @@ export default function AnimatedLogo({
     window.addEventListener('resize', updateSize);
     return () => window.removeEventListener('resize', updateSize);
   }, []);
+
+  // Handle skip animation
+  useEffect(() => {
+    if (skipAnimation && !hasSkippedRef.current) {
+      hasSkippedRef.current = true;
+      setPhase('hidden');
+      onAnimationComplete?.();
+      onBallsInPosition?.();
+    }
+  }, [skipAnimation, onAnimationComplete, onBallsInPosition]);
 
   useEffect(() => {
     fetch(svgPath)
@@ -194,6 +207,12 @@ export default function AnimatedLogo({
     };
   }, [svgData, vertices, orbitalPositions, onAnimationComplete, onBallsInPosition]);
 
+  // Return nothing if animation is skipped or hidden
+  if (skipAnimation || phase === 'hidden') {
+    return null;
+  }
+
+  // Return placeholder if not loaded yet
   if (!svgData || !vertices) {
     return <div style={{ width: size, height: size * 0.7 }} />;
   }
@@ -208,7 +227,7 @@ export default function AnimatedLogo({
 
   const isBuilding = phase === 'building';
   const isBuilt = phase === 'built' || phase === 'transitioning' || phase === 'arrived';
-  const isTransitioning = phase === 'transitioning' || phase === 'arrived' || phase === 'hidden';
+  const isTransitioning = phase === 'transitioning' || phase === 'arrived';
   const showFloatingBalls = redBall && greenBall && blueBall && phase !== 'loading' && phase !== 'building';
 
   // Ball size in screen pixels
