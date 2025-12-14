@@ -92,6 +92,9 @@ export async function POST(request: NextRequest) {
         if (count > 100) {
           await redisInstance.zremrangebyrank(key, 0, count - 101);
         }
+        
+        // Set TTL on the key (1 hour) - ensures cleanup even if no new messages
+        await redisInstance.expire(key, MESSAGE_TTL);
       } catch (e) {
         console.error('Redis error:', e);
       }
