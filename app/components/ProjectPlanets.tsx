@@ -93,7 +93,7 @@ export default function ProjectPlanets({
   const [orbitRadii, setOrbitRadii] = useState<number[]>([]);
   const [socialOrbiting, setSocialOrbiting] = useState(false);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
-  const [highlightCurrentUser, setHighlightCurrentUser] = useState(false);
+  const [highlightExplorers, setHighlightExplorers] = useState(false);
   const [showCounter, setShowCounter] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -696,7 +696,7 @@ export default function ProjectPlanets({
         return (
         <div
           key={planet.id}
-          className={`planet ${visible ? 'visible' : ''} ${isDragging ? 'dragging' : ''} ${isNear ? 'near' : ''} ${isFreed ? 'freed' : ''} ${isSocial ? 'social-planet' : ''} ${isDummy ? 'dummy-planet' : ''} ${isVisitor ? 'visitor-planet' : ''} ${isCurrentUser ? 'current-user-planet' : ''} ${isCurrentUser && highlightCurrentUser ? 'highlight-me' : ''} ${hasPrivateMessage ? 'has-private-message' : ''}`}
+          className={`planet ${visible ? 'visible' : ''} ${isDragging ? 'dragging' : ''} ${isNear ? 'near' : ''} ${isFreed ? 'freed' : ''} ${isSocial ? 'social-planet' : ''} ${isDummy ? 'dummy-planet' : ''} ${isVisitor ? 'visitor-planet' : ''} ${isCurrentUser ? 'current-user-planet' : ''} ${isVisitor && highlightExplorers ? 'highlight-explorer' : ''} ${hasPrivateMessage ? 'has-private-message' : ''}`}
           style={{
             transform: `translate(${x}px, ${y}px) translate(-50%, -50%)`,
             '--planet-size': `${planetSize}px`,
@@ -777,8 +777,8 @@ export default function ProjectPlanets({
       {showCounter && visitorCount > 0 && (
         <div 
           className={`visitor-counter ${showCounter ? 'visible' : ''} ${chatOpen ? 'chat-open' : ''} ${unreadCount > 0 && !chatOpen ? 'has-unread' : ''}`}
-          onMouseEnter={() => setHighlightCurrentUser(true)}
-          onMouseLeave={() => setHighlightCurrentUser(false)}
+          onMouseEnter={() => setHighlightExplorers(true)}
+          onMouseLeave={() => setHighlightExplorers(false)}
           onDoubleClick={() => setChatOpen(!chatOpen)}
         >
           <div className="visitor-count">
@@ -1232,28 +1232,28 @@ export default function ProjectPlanets({
           }
         }
 
-        /* Highlight current user when hovering counter */
-        .highlight-me {
+        /* Highlight all explorers when hovering counter */
+        .highlight-explorer {
           z-index: 9999 !important;
         }
 
-        .highlight-me .planet-core {
+        .highlight-explorer .planet-core {
           animation: pulse-highlight 0.5s ease-in-out infinite !important;
-          transform: scale(2) !important;
+          transform: scale(1.5) !important;
         }
 
-        .highlight-me .planet-glow {
+        .highlight-explorer .planet-glow {
           opacity: 1 !important;
-          transform: translate(-50%, -50%) scale(3) !important;
-          filter: blur(20px) !important;
+          transform: translate(-50%, -50%) scale(2) !important;
+          filter: blur(15px) !important;
         }
 
         @keyframes pulse-highlight {
           0%, 100% { 
-            box-shadow: 0 0 40px rgba(255, 215, 0, 1), 0 0 80px rgba(255, 215, 0, 0.5); 
+            box-shadow: 0 0 30px rgba(255, 255, 255, 0.8), 0 0 60px rgba(255, 255, 255, 0.4); 
           }
           50% { 
-            box-shadow: 0 0 60px rgba(255, 215, 0, 1), 0 0 120px rgba(255, 215, 0, 0.7); 
+            box-shadow: 0 0 50px rgba(255, 255, 255, 1), 0 0 100px rgba(255, 255, 255, 0.6); 
           }
         }
 
