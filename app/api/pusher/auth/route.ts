@@ -1,14 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Pusher from 'pusher';
 
-// Initialize Pusher server
-const pusher = new Pusher({
-  appId: process.env.PUSHER_APP_ID!,
-  key: process.env.NEXT_PUBLIC_PUSHER_KEY!,
-  secret: process.env.PUSHER_SECRET!,
-  cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
-  useTLS: true,
-});
+// Initialize Pusher server lazily to avoid build-time errors
+let pusher: Pusher | null = null;
+
+function getPusher(): Pusher | null {
+  if (pusher) return pusher;
+  
+  const appId = process.env.PUSHER_APP_ID;
+  const key = process.env.NEXT_PUBLIC_PUSHER_KEY;
+  const secret = process.env.PUSHER_SECRET;
+  const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+  
+  if (!appId || !key || !secret || !cluster) {
+    console.error('Missing Pusher environment variables:', { appId: !!appId, key: !!key, secret: !!secret, cluster: !!cluster });
+    return null;
+  }
+  
+  pusher = new Pusher({
+    appId,
+    key,
+    secret,
+    cluster,
+    useTLS: true,
+  });
+  
+  return pusher;
+}
 
 // Fun explorer name generator
 const adjectives = [
@@ -60,6 +78,12 @@ function countryToFlag(countryCode: string): string {
 
 export async function POST(request: NextRequest) {
   try {
+    const pusherInstance = getPusher();
+    
+    if (!pusherInstance) {
+      return NextResponse.json({ error: 'Pusher not configured' }, { status: 503 });
+    }
+    
     const body = await request.text();
     const params = new URLSearchParams(body);
     
@@ -95,7 +119,7 @@ export async function POST(request: NextRequest) {
       },
     };
     
-    const authResponse = pusher.authorizeChannel(socketId, channelName, presenceData);
+    const authResponse = pusherInstance.authorizeChannel(socketId, channelName, presenceData);
     
     return NextResponse.json(authResponse);
   } catch (error) {
