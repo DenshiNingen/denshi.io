@@ -3,17 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Pusher, { PresenceChannel, Members } from 'pusher-js';
 
-// Generate or retrieve a persistent device ID (persists across sessions)
-function getDeviceId(): string {
-  if (typeof window === 'undefined') return '';
-  
-  let deviceId = localStorage.getItem('visitor_device_id');
-  if (!deviceId) {
-    deviceId = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    localStorage.setItem('visitor_device_id', deviceId);
-  }
-  return deviceId;
-}
+// Note: Visitor ID is now managed server-side via httpOnly cookies
+// This prevents client-side tampering and impersonation
 
 export interface Visitor {
   id: string;
@@ -202,18 +193,10 @@ export function useVisitors() {
       return;
     }
 
-    // Get persistent device ID
-    const deviceId = getDeviceId();
-
-    // Initialize Pusher with device ID in auth params
+    // Initialize Pusher - visitor ID is managed server-side via httpOnly cookie
     const pusher = new Pusher(pusherKey, {
       cluster: pusherCluster,
       authEndpoint: '/api/pusher/auth',
-      auth: {
-        params: {
-          device_id: deviceId,
-        },
-      },
     });
 
     // Subscribe to presence channel

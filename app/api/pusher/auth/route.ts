@@ -78,6 +78,8 @@ function countryToFlag(countryCode: string): string {
   return String.fromCodePoint(...codePoints);
 }
 
+const VISITOR_COOKIE_NAME = 'visitor_id';
+
 export async function POST(request: NextRequest) {
   try {
     const pusherInstance = getPusher();
@@ -91,14 +93,20 @@ export async function POST(request: NextRequest) {
     
     const socketId = params.get('socket_id');
     const channelName = params.get('channel_name');
-    const deviceId = params.get('device_id');
     
     if (!socketId || !channelName) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
     }
     
-    // Use device ID if provided, otherwise generate one based on socket
-    const visitorId = deviceId || `visitor_${socketId}_${Date.now()}`;
+    // Get visitor ID from httpOnly cookie (secure, can't be tampered with by client JS)
+    let visitorId = request.cookies.get(VISITOR_COOKIE_NAME)?.value;
+    let isNewVisitor = false;
+    
+    // If no cookie, generate a new server-side ID
+    if (!visitorId) {
+      visitorId = `visitor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${socketId.substr(0, 8)}`;
+      isNewVisitor = true;
+    }
     
     // Get visitor info from headers
     const userAgent = request.headers.get('user-agent') || '';
@@ -128,7 +136,21 @@ export async function POST(request: NextRequest) {
     
     const authResponse = pusherInstance.authorizeChannel(socketId, channelName, presenceData);
     
-    return NextResponse.json(authResponse);
+    // Create response with auth data
+    const response = NextResponse.json(authResponse);
+    
+    // Set httpOnly cookie if this is a new visitor (1 year expiry)
+    if (isNewVisitor) {
+      response.cookies.set(VISITOR_COOKIE_NAME, visitorId, {
+        httpOnly: true, // Can't be accessed by JavaScript
+        secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+        sameSite: 'strict', // Prevent CSRF
+        maxAge: 60 * 60 * 24 * 365, // 1 year
+        path: '/',
+      });
+    }
+    
+    return response;
   } catch (error) {
     console.error('Pusher auth error:', error);
     return NextResponse.json({ error: 'Auth failed' }, { status: 500 });
