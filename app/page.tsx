@@ -1,9 +1,18 @@
-"use client"; // This line marks the file as a Client Component
+"use client";
 
-import { useEffect } from 'react';
-import Image from 'next/image';
+import { useEffect, useState } from 'react';
+import AnimatedLogo from './components/AnimatedLogo';
+import MatrixText from './components/MatrixText';
 
 export default function Home() {
+  const [showText, setShowText] = useState(false);
+
+  useEffect(() => {
+    // Start text animation after logo animation
+    const timer = setTimeout(() => setShowText(true), 2800);
+    return () => clearTimeout(timer);
+  }, []);
+
   useEffect(() => {
     // Particle animation setup
     const canvas = document.getElementById('space-canvas') as HTMLCanvasElement;
@@ -18,6 +27,9 @@ export default function Home() {
     }
     const particlesArray: Particle[] = [];
     const numberOfParticles = 100;
+    const startDelay = 3000; // Start after logo and text animation
+    const fadeInDuration = 2000; // Total time for all stars to fade in
+    let startTime: number | null = null;
 
     class Particle {
       x: number;
@@ -25,23 +37,39 @@ export default function Home() {
       size: number;
       speedX: number;
       speedY: number;
-      constructor() {
+      opacity: number;
+      targetOpacity: number;
+      fadeInDelay: number; // When this particle starts fading in
+      
+      constructor(index: number) {
         this.x = Math.random() * canvas.width;
         this.y = Math.random() * canvas.height;
         this.size = Math.random() * 2 + 1;
         this.speedX = Math.random() * 1 - 0.5;
         this.speedY = Math.random() * 1 - 0.5;
+        this.opacity = 0;
+        this.targetOpacity = Math.random() * 0.5 + 0.5; // Random brightness
+        // Stagger fade-in: each particle has a random delay within the duration
+        this.fadeInDelay = Math.random() * fadeInDuration;
       }
-      update() {
+      
+      update(elapsed: number) {
         this.x += this.speedX;
         this.y += this.speedY;
 
-        // Re-position particles if they move off the canvas
         if (this.x < 0 || this.x > canvas.width) this.x = Math.random() * canvas.width;
         if (this.y < 0 || this.y > canvas.height) this.y = Math.random() * canvas.height;
+        
+        // Progressive fade in after delay
+        if (elapsed > startDelay + this.fadeInDelay) {
+          const fadeProgress = Math.min(1, (elapsed - startDelay - this.fadeInDelay) / 800);
+          this.opacity = fadeProgress * this.targetOpacity;
+        }
       }
+      
       draw() {
-        ctx!.fillStyle = 'white';
+        if (this.opacity <= 0) return;
+        ctx!.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
         ctx!.beginPath();
         ctx!.arc(this.x, this.y, this.size, 0, Math.PI * 2);
         ctx!.closePath();
@@ -51,37 +79,34 @@ export default function Home() {
 
     function init() {
       for (let i = 0; i < numberOfParticles; i++) {
-        particlesArray.push(new Particle());
+        particlesArray.push(new Particle(i));
       }
     }
 
-    function animate() {
+    function animate(timestamp: number) {
+      if (!startTime) startTime = timestamp;
+      const elapsed = timestamp - startTime;
+      
       ctx!.clearRect(0, 0, canvas.width, canvas.height);
       particlesArray.forEach(particle => {
-        particle.update();
+        particle.update(elapsed);
         particle.draw();
       });
       requestAnimationFrame(animate);
     }
-  
+
     function resizeCanvas() {
       if (canvas) {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
-        // Log dimensions for debugging
-        console.log(`Canvas resized to: ${canvas.width}x${canvas.height}`);
       }
     }
-  
-    // Ensure resizeCanvas is called after the component is mounted
+
     window.addEventListener('resize', resizeCanvas);
-    resizeCanvas(); // Initial call to set dimensions
-  
-    // Initialize particles and start animation
+    resizeCanvas();
     init();
-    animate();
-  
-    // Cleanup on component unmount
+    requestAnimationFrame(animate);
+
     return () => {
       window.removeEventListener('resize', resizeCanvas);
       ctx?.clearRect(0, 0, canvas.width, canvas.height);
@@ -93,53 +118,38 @@ export default function Home() {
       className="relative flex h-screen w-screen flex-col items-center justify-center
         gap-8 md:px-[26vw] overflow-hidden"
     >
-
       <canvas id="space-canvas" style={{
         position: "absolute",
         top: 0,
         left: 0,
         width: "100%",
         height: "100%",
-        zIndex: 1,  // Behind content, but above noise background
+        zIndex: 1,
       }}></canvas>
 
-      <Image
-        src="/denshi_ningen_logo.png"
-        alt="Denshi Ningen Logo"
-        width={200} // Adjust width as necessary
-        height={100} // Adjust height as necessary
-        className="logo"
-        style={{ zIndex: 2 }}
-      />
+      <AnimatedLogo size={240} />
 
-      <h1 className="name" style={{
-        fontFamily: "Orbitron",
-        color: "white",
-        fontSize: "3vh",
-        textAlign: "center",
-        marginTop: "0vh",
-        zIndex: 2,
-      }}>
-        Denshi Ningen
+      <h1 
+        className="name"
+        style={{
+          fontFamily: "Orbitron",
+          color: "white",
+          fontSize: "3vh",
+          textAlign: "center",
+          marginTop: "0vh",
+          zIndex: 2,
+          minHeight: '1.5em',
+          letterSpacing: '0.1em',
+        }}
+      >
+        {showText && (
+          <MatrixText 
+            text="Denshi Ningen" 
+            charRevealTime={25}
+            scrambleIterations={2}
+          />
+        )}
       </h1>
-
-      <style jsx>{`
-        @keyframes pulse {
-          0% {
-            filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0));
-          }
-          50% {
-            filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.8));
-          }
-          100% {
-            filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0));
-          }
-        }
-
-        .logo {
-          animation: pulse 2s infinite;
-        }
-      `}</style>
     </main>
   );
 }
