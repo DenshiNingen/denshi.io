@@ -37,20 +37,27 @@ function calculateSocialPlanetPositions(screenWidth: number, screenHeight: numbe
   const cx = screenWidth / 2;
   const cy = screenHeight / 2;
   const screenSize = Math.min(screenWidth, screenHeight);
-  const socialBaseRadius = screenSize * 0.12;
+  
+  // Layout based on screen size only (same logic as ProjectPlanets)
+  const isSmallScreen = screenSize < 600;
+  const isMobileLayout = isSmallScreen;
+  
+  // Use same values as ProjectPlanets
+  const baseRadius = screenSize * (isMobileLayout ? 0.15 : 0.12);
+  const radiusStep = screenSize * (isMobileLayout ? 0.06 : 0.04);
   
   return {
     red: {
-      x: cx + Math.cos((0 * Math.PI * 2) / 3 + Math.PI / 6) * (socialBaseRadius + 0 * (screenSize * 0.04)),
-      y: cy + Math.sin((0 * Math.PI * 2) / 3 + Math.PI / 6) * (socialBaseRadius + 0 * (screenSize * 0.04)),
+      x: cx + Math.cos((0 * Math.PI * 2) / 3 + Math.PI / 6) * (baseRadius + 0 * radiusStep),
+      y: cy + Math.sin((0 * Math.PI * 2) / 3 + Math.PI / 6) * (baseRadius + 0 * radiusStep),
     },
     green: {
-      x: cx + Math.cos((1 * Math.PI * 2) / 3 + Math.PI / 6) * (socialBaseRadius + 1 * (screenSize * 0.04)),
-      y: cy + Math.sin((1 * Math.PI * 2) / 3 + Math.PI / 6) * (socialBaseRadius + 1 * (screenSize * 0.04)),
+      x: cx + Math.cos((1 * Math.PI * 2) / 3 + Math.PI / 6) * (baseRadius + 1 * radiusStep),
+      y: cy + Math.sin((1 * Math.PI * 2) / 3 + Math.PI / 6) * (baseRadius + 1 * radiusStep),
     },
     blue: {
-      x: cx + Math.cos((2 * Math.PI * 2) / 3 + Math.PI / 6) * (socialBaseRadius + 2 * (screenSize * 0.04)),
-      y: cy + Math.sin((2 * Math.PI * 2) / 3 + Math.PI / 6) * (socialBaseRadius + 2 * (screenSize * 0.04)),
+      x: cx + Math.cos((2 * Math.PI * 2) / 3 + Math.PI / 6) * (baseRadius + 2 * radiusStep),
+      y: cy + Math.sin((2 * Math.PI * 2) / 3 + Math.PI / 6) * (baseRadius + 2 * radiusStep),
     },
   };
 }

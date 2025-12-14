@@ -75,6 +75,7 @@ export default function ProjectPlanets({
   const [nearPlanetId, setNearPlanetId] = useState<string | null>(null);
   const [orbitRadii, setOrbitRadii] = useState<number[]>([]);
   const [socialOrbiting, setSocialOrbiting] = useState(false);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
   
   // Use refs for animation state to avoid re-render issues
   const planetsRef = useRef<PlanetData[]>([]);
@@ -92,6 +93,12 @@ export default function ProjectPlanets({
     onPositionsGeneratedRef.current = onPositionsGenerated;
   }, [onPositionsGenerated]);
 
+  // Detect touch device on mount
+  useEffect(() => {
+    const hasTouchCapability = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    setIsTouchDevice(hasTouchCapability);
+  }, []);
+
   // Initialize planets with Kepler-like orbital mechanics
   useEffect(() => {
     const initPlanets = () => {
@@ -101,6 +108,12 @@ export default function ProjectPlanets({
       setCenter({ x: cx, y: cy });
 
       const screenSize = Math.min(window.innerWidth, window.innerHeight);
+      
+      // Detect touch device (for interaction behavior, not layout)
+      const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      const isSmallScreen = screenSize < 600;
+      // Layout adjustments based on screen size, NOT touch capability
+      const isMobileLayout = isSmallScreen;
       
       // Separate social planets (inner orbits) from project planets (outer orbits)
       const socialPlanetsData = allPlanets.filter(p => p.isSocialPlanet);
@@ -113,10 +126,10 @@ export default function ProjectPlanets({
       const allPlanetData: PlanetData[] = [];
       
       // Social planets: inner orbits (closest to sun)
-      const socialBaseRadius = screenSize * 0.12;
+      const socialBaseRadius = screenSize * (isMobileLayout ? 0.15 : 0.12);
       socialPlanetsData.forEach((p, index) => {
         const mass = p.mass || 3;
-        const radius = socialBaseRadius + index * (screenSize * 0.04);
+        const radius = socialBaseRadius + index * (screenSize * (isMobileLayout ? 0.06 : 0.04));
         radii.push(radius);
         
         // Social planets orbit faster
@@ -125,8 +138,8 @@ export default function ProjectPlanets({
         // Spread them out evenly
         const startAngle = (index * Math.PI * 2) / 3 + Math.PI / 6;
         
-        // Larger size for social planets
-        const size = 12 + mass * 2;
+        // Larger size for social planets (smaller on mobile)
+        const size = isMobileLayout ? 10 + mass * 1.5 : 12 + mass * 2;
         
         allPlanetData.push({
           planet: p,
@@ -140,14 +153,14 @@ export default function ProjectPlanets({
       });
       
       // Project planets: outer orbits
-      const projectBaseRadius = screenSize * 0.25;
-      const maxRadius = screenSize * 0.45;
+      const projectBaseRadius = screenSize * (isMobileLayout ? 0.28 : 0.25);
+      const maxRadius = screenSize * (isMobileLayout ? 0.42 : 0.45);
       
       sortedProjects.forEach((p, index) => {
         const mass = p.mass || 2;
         
-        // Exponential orbit spacing
-        const orbitFactor = Math.pow(1.3, index);
+        // Exponential orbit spacing (less spread on mobile)
+        const orbitFactor = Math.pow(isMobileLayout ? 1.2 : 1.3, index);
         const radius = Math.min(projectBaseRadius * orbitFactor, maxRadius);
         radii.push(radius);
         
@@ -159,8 +172,8 @@ export default function ProjectPlanets({
         const goldenAngle = Math.PI * (3 - Math.sqrt(5));
         const startAngle = index * goldenAngle + Math.random() * 0.3;
         
-        // Size based on mass
-        const size = 6 + mass * 2;
+        // Size based on mass (smaller on mobile)
+        const size = isMobileLayout ? 5 + mass * 1.5 : 6 + mass * 2;
         
         allPlanetData.push({
           planet: p,
@@ -296,12 +309,32 @@ export default function ProjectPlanets({
       setDraggingId(null);
     };
 
+    // Touch events for mobile
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      hasDraggedRef.current = true;
+      const pd = planetsRef.current.find(p => p.planet.id === draggingId);
+      if (pd) {
+        pd.freedX = touch.clientX - dragOffsetRef.current.x;
+        pd.freedY = touch.clientY - dragOffsetRef.current.y;
+      }
+    };
+
+    const handleTouchEnd = () => {
+      handleMouseUp(); // Reuse the same logic
+    };
+
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    window.addEventListener('touchend', handleTouchEnd);
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
     };
   }, [draggingId]);
 
@@ -339,7 +372,20 @@ export default function ProjectPlanets({
     };
   }, [draggingId, positions, attractRadius]);
 
-  // Start dragging
+  // Close tooltip when clicking outside planets
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.planet')) {
+        setHoveredProject(null);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  // Start dragging (mouse)
   const handleDragStart = useCallback((e: React.MouseEvent, projectId: string, planetX: number, planetY: number) => {
     e.preventDefault();
     e.stopPropagation();
@@ -356,6 +402,29 @@ export default function ProjectPlanets({
     dragOffsetRef.current = {
       x: e.clientX - planetX,
       y: e.clientY - planetY,
+    };
+    
+    setDraggingId(projectId);
+    setNearPlanetId(null);
+  }, []);
+
+  // Start dragging (touch)
+  const handleTouchStart = useCallback((e: React.TouchEvent, projectId: string, planetX: number, planetY: number) => {
+    if (e.touches.length !== 1) return; // Only single touch
+    
+    const touch = e.touches[0];
+    hasDraggedRef.current = false;
+    
+    const planet = planetsRef.current.find(p => p.planet.id === projectId);
+    if (planet) {
+      planet.freedX = planetX;
+      planet.freedY = planetY;
+      planet.isFreed = true;
+    }
+    
+    dragOffsetRef.current = {
+      x: touch.clientX - planetX,
+      y: touch.clientY - planetY,
     };
     
     setDraggingId(projectId);
@@ -405,11 +474,17 @@ export default function ProjectPlanets({
   }, [visible]);
 
   const handleClick = useCallback((e: React.MouseEvent, planet: Planet) => {
-    // Only open link if no dragging occurred
-    if (!hasDraggedRef.current && planet.url) {
+    // Only process if no dragging occurred
+    if (hasDraggedRef.current) return;
+    
+    // If tooltip is already showing for this planet, open the link
+    if (hoveredProject === planet.id && planet.url) {
       window.open(planet.url, '_blank');
+    } else {
+      // First click: show tooltip
+      setHoveredProject(planet.id);
     }
-  }, []);
+  }, [hoveredProject]);
 
   return (
     <div className="project-planets">
@@ -485,9 +560,10 @@ export default function ProjectPlanets({
             '--planet-size': `${planetSize}px`,
             '--glow-size': `${planetSize * 2.5}px`,
           } as React.CSSProperties}
-          onMouseEnter={() => !draggingId && !isDummy && setHoveredProject(planet.id)}
-          onMouseLeave={() => setHoveredProject(null)}
+          onMouseEnter={() => !isTouchDevice && !draggingId && !isDummy && setHoveredProject(planet.id)}
+          onMouseLeave={() => !isTouchDevice && setHoveredProject(null)}
           onMouseDown={(e) => handleDragStart(e, planet.id, x, y)}
+          onTouchStart={(e) => handleTouchStart(e, planet.id, x, y)}
           onClick={(e) => !isDragging && !isDummy && handleClick(e, planet)}
           onDoubleClick={() => handleDoubleClick(planet.id)}
         >
@@ -522,7 +598,10 @@ export default function ProjectPlanets({
               <div className="tooltip-name">{planet.name}</div>
               <div className="tooltip-desc">{planet.description}</div>
               <div className="tooltip-hint">
-                {isFreed ? 'Double-click to return to orbit' : 'Drag to free • Click to open'}
+                {isFreed 
+                  ? (isTouchDevice ? 'Double-tap to return to orbit' : 'Release to return to orbit')
+                  : (isTouchDevice ? 'Tap again to open' : 'Click to open')
+                }
               </div>
             </div>
           )}
@@ -599,6 +678,7 @@ export default function ProjectPlanets({
           z-index: 4;
           user-select: none;
           will-change: transform;
+          touch-action: none; /* Prevent browser gestures while dragging */
         }
 
         .planet.visible {
@@ -845,6 +925,21 @@ export default function ProjectPlanets({
           margin-top: 6px;
           border-top: 1px solid rgba(255, 255, 255, 0.1);
           padding-top: 6px;
+        }
+
+        @media (max-width: 600px) {
+          .planet-tooltip {
+            padding: 8px 10px;
+          }
+          .tooltip-name {
+            font-size: 12px;
+          }
+          .tooltip-desc {
+            font-size: 10px;
+          }
+          .tooltip-hint {
+            font-size: 8px;
+          }
         }
       `}</style>
     </div>

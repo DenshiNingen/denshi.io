@@ -25,7 +25,19 @@ interface Planet {
 export default function Home() {
   const [showText, setShowText] = useState(false);
   const [showSolarSystem, setShowSolarSystem] = useState(false);
+  const [logoSize, setLogoSize] = useState(240);
   const planetsRef = useRef<Planet[]>([]);
+
+  // Set logo size based on screen size only (for layout)
+  useEffect(() => {
+    const updateLogoSize = () => {
+      const isSmallScreen = window.innerWidth < 600;
+      setLogoSize(isSmallScreen ? 140 : 240);
+    };
+    updateLogoSize();
+    window.addEventListener('resize', updateLogoSize);
+    return () => window.removeEventListener('resize', updateLogoSize);
+  }, []);
   
   // Callback when ProjectPlanets generates positions
   const handlePositionsGenerated = useCallback((positions: { x: number; y: number }[]) => {
@@ -268,11 +280,11 @@ export default function Home() {
       />
 
       {/* Sun in the center - appears after logo fades */}
-      {showSolarSystem && <Sun size={70} visible={true} />}
+      {showSolarSystem && <Sun size={logoSize < 200 ? 50 : 70} visible={true} />}
 
       {/* Animated Logo - balls fly to orbital positions */}
       <AnimatedLogo 
-        size={240} 
+        size={logoSize} 
         onAnimationComplete={handleLogoAnimationComplete}
         onBallsInPosition={handleTransitionToSolarSystem}
       />
@@ -281,8 +293,9 @@ export default function Home() {
         className="header-text"
         style={{
           position: 'absolute',
-          top: '2rem',
-          left: '2rem',
+          top: 'clamp(1rem, 4vw, 2rem)',
+          left: 'clamp(1rem, 4vw, 2rem)',
+          right: 'clamp(1rem, 4vw, 2rem)',
           textAlign: "left",
           zIndex: 20,
         }}
@@ -291,7 +304,7 @@ export default function Home() {
           style={{
             fontFamily: "Orbitron",
             color: "white",
-            fontSize: '1.5rem',
+            fontSize: 'clamp(1rem, 4vw, 1.5rem)',
             letterSpacing: '0.15em',
             textTransform: 'uppercase',
             margin: 0,
@@ -309,8 +322,8 @@ export default function Home() {
           style={{
             fontFamily: "Orbitron",
             color: "rgba(255, 255, 255, 0.6)",
-            fontSize: '0.75rem',
-            letterSpacing: '0.1em',
+            fontSize: 'clamp(0.5rem, 2vw, 0.75rem)',
+            letterSpacing: '0.05em',
             marginTop: '0.5rem',
           }}
         >
