@@ -1,15 +1,13 @@
 "use client";
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 
-// Type for parsed SVG data
 interface LogoData {
   viewBox: { width: number; height: number };
   circles: { cx: number; cy: number; r: number; fill: string }[];
   lineWidth: number;
 }
 
-// Parse SVG file and extract circle data
 function parseSVG(svgText: string): LogoData | null {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgText, 'image/svg+xml');
@@ -17,11 +15,9 @@ function parseSVG(svgText: string): LogoData | null {
   
   if (!svg) return null;
   
-  // Get viewBox
   const viewBoxAttr = svg.getAttribute('viewBox');
   const [, , width, height] = viewBoxAttr?.split(' ').map(Number) || [0, 0, 750, 531];
   
-  // Get all circles (these are our vertices)
   const circleElements = svg.querySelectorAll('circle');
   const circles = Array.from(circleElements).map(circle => ({
     cx: parseFloat(circle.getAttribute('cx') || '0'),
@@ -30,28 +26,74 @@ function parseSVG(svgText: string): LogoData | null {
     fill: circle.getAttribute('fill') || '#FFFFFF',
   }));
   
-  // Get line width from first rect
   const rect = svg.querySelector('rect');
   const lineWidth = parseFloat(rect?.getAttribute('width') || '65');
   
   return { viewBox: { width, height }, circles, lineWidth };
 }
 
+// Calculate orbital positions - MUST match ProjectPlanets exactly
+function calculateSocialPlanetPositions(screenWidth: number, screenHeight: number) {
+  const cx = screenWidth / 2;
+  const cy = screenHeight / 2;
+  const screenSize = Math.min(screenWidth, screenHeight);
+  const socialBaseRadius = screenSize * 0.12;
+  
+  return {
+    red: {
+      x: cx + Math.cos((0 * Math.PI * 2) / 3 + Math.PI / 6) * (socialBaseRadius + 0 * (screenSize * 0.04)),
+      y: cy + Math.sin((0 * Math.PI * 2) / 3 + Math.PI / 6) * (socialBaseRadius + 0 * (screenSize * 0.04)),
+    },
+    green: {
+      x: cx + Math.cos((1 * Math.PI * 2) / 3 + Math.PI / 6) * (socialBaseRadius + 1 * (screenSize * 0.04)),
+      y: cy + Math.sin((1 * Math.PI * 2) / 3 + Math.PI / 6) * (socialBaseRadius + 1 * (screenSize * 0.04)),
+    },
+    blue: {
+      x: cx + Math.cos((2 * Math.PI * 2) / 3 + Math.PI / 6) * (socialBaseRadius + 2 * (screenSize * 0.04)),
+      y: cy + Math.sin((2 * Math.PI * 2) / 3 + Math.PI / 6) * (socialBaseRadius + 2 * (screenSize * 0.04)),
+    },
+  };
+}
+
 interface AnimatedLogoProps {
   size?: number;
   svgPath?: string;
+  onAnimationComplete?: () => void;
+  onBallsInPosition?: () => void;
 }
 
-// Animated Logo Component - loads SVG dynamically
+interface BallState {
+  x: number;
+  y: number;
+  visible: boolean;
+}
+
 export default function AnimatedLogo({ 
   size = 240, 
-  svgPath = '/denshi_ningen_logo.svg' 
+  svgPath = '/denshi_ningen_logo.svg',
+  onAnimationComplete,
+  onBallsInPosition,
 }: AnimatedLogoProps) {
   const [svgData, setSvgData] = useState<LogoData | null>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [animationDone, setAnimationDone] = useState(false);
+  const [phase, setPhase] = useState<'loading' | 'building' | 'built' | 'transitioning' | 'arrived' | 'hidden'>('loading');
+  const [screenSize, setScreenSize] = useState({ width: 1000, height: 800 });
+  
+  // Ball positions - start at null, set when logo is built
+  const [redBall, setRedBall] = useState<BallState | null>(null);
+  const [greenBall, setGreenBall] = useState<BallState | null>(null);
+  const [blueBall, setBlueBall] = useState<BallState | null>(null);
+  
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Load and parse SVG on mount
+  useEffect(() => {
+    const updateSize = () => {
+      setScreenSize({ width: window.innerWidth, height: window.innerHeight });
+    };
+    updateSize();
+    window.addEventListener('resize', updateSize);
+    return () => window.removeEventListener('resize', updateSize);
+  }, []);
+
   useEffect(() => {
     fetch(svgPath)
       .then(res => res.text())
@@ -62,32 +104,88 @@ export default function AnimatedLogo({
       .catch(err => console.error('Failed to load SVG:', err));
   }, [svgPath]);
 
-  // Start animation after SVG is loaded
-  useEffect(() => {
-    if (!svgData) return;
-    
-    const timer = setTimeout(() => setIsLoaded(true), 100);
-    const doneTimer = setTimeout(() => setAnimationDone(true), 2600);
-    return () => {
-      clearTimeout(timer);
-      clearTimeout(doneTimer);
+  const vertices = useMemo(() => {
+    if (!svgData || svgData.circles.length < 3) return null;
+    const sorted = [...svgData.circles].sort((a, b) => a.cy - b.cy);
+    return {
+      green: sorted[0],
+      blue: sorted[1],
+      red: sorted[2],
     };
   }, [svgData]);
 
-  // Sort circles by position to identify vertices
-  const vertices = useMemo(() => {
-    if (!svgData || svgData.circles.length < 3) return null;
+  const orbitalPositions = useMemo(() => {
+    return calculateSocialPlanetPositions(screenSize.width, screenSize.height);
+  }, [screenSize]);
+
+  // Animation sequence
+  useEffect(() => {
+    if (!svgData || !vertices) return;
     
-    const sorted = [...svgData.circles].sort((a, b) => a.cy - b.cy);
-    // Top circle (smallest y) = green (topLeft)
-    // Middle circle = blue (right) 
-    // Bottom circle (largest y) = red (bottomLeft)
-    return {
-      green: sorted[0],  // topLeft
-      blue: sorted[1],   // right (middle y)
-      red: sorted[2],    // bottomLeft
+    const buildTimer = setTimeout(() => setPhase('building'), 100);
+    
+    const builtTimer = setTimeout(() => {
+      setPhase('built');
+      onAnimationComplete?.();
+      
+      // Initialize floating balls at logo positions
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const scaleX = rect.width / svgData.viewBox.width;
+        const scaleY = rect.height / svgData.viewBox.height;
+        
+        setRedBall({
+          x: rect.left + vertices.red.cx * scaleX,
+          y: rect.top + vertices.red.cy * scaleY,
+          visible: true,
+        });
+        setGreenBall({
+          x: rect.left + vertices.green.cx * scaleX,
+          y: rect.top + vertices.green.cy * scaleY,
+          visible: true,
+        });
+        setBlueBall({
+          x: rect.left + vertices.blue.cx * scaleX,
+          y: rect.top + vertices.blue.cy * scaleY,
+          visible: true,
+        });
+      }
+    }, 2600);
+    
+    // Start transition - move balls to orbital positions
+    const transitionTimer = setTimeout(() => {
+      setPhase('transitioning');
+      
+      // Animate balls to orbital positions
+      setRedBall(prev => prev ? { ...prev, x: orbitalPositions.red.x, y: orbitalPositions.red.y } : null);
+      setGreenBall(prev => prev ? { ...prev, x: orbitalPositions.green.x, y: orbitalPositions.green.y } : null);
+      setBlueBall(prev => prev ? { ...prev, x: orbitalPositions.blue.x, y: orbitalPositions.blue.y } : null);
+    }, 4600);
+    
+    // Balls arrived
+    const arrivedTimer = setTimeout(() => {
+      setPhase('arrived');
+      onBallsInPosition?.();
+    }, 6400);
+    
+    // Hide balls
+    const hideTimer = setTimeout(() => {
+      setRedBall(prev => prev ? { ...prev, visible: false } : null);
+      setGreenBall(prev => prev ? { ...prev, visible: false } : null);
+      setBlueBall(prev => prev ? { ...prev, visible: false } : null);
+    }, 6500);
+    
+    const hiddenTimer = setTimeout(() => setPhase('hidden'), 6800);
+    
+    return () => {
+      clearTimeout(buildTimer);
+      clearTimeout(builtTimer);
+      clearTimeout(transitionTimer);
+      clearTimeout(arrivedTimer);
+      clearTimeout(hideTimer);
+      clearTimeout(hiddenTimer);
     };
-  }, [svgData]);
+  }, [svgData, vertices, orbitalPositions, onAnimationComplete, onBallsInPosition]);
 
   if (!svgData || !vertices) {
     return <div style={{ width: size, height: size * 0.7 }} />;
@@ -97,145 +195,182 @@ export default function AnimatedLogo({
   const { green: topLeft, red: bottomLeft, blue: right } = vertices;
   const dotRadius = topLeft.r;
 
-  // Calculate line lengths for stroke-dasharray
   const lineRedLength = Math.sqrt(Math.pow(bottomLeft.cx - topLeft.cx, 2) + Math.pow(bottomLeft.cy - topLeft.cy, 2));
   const lineBlueLength = Math.sqrt(Math.pow(right.cx - bottomLeft.cx, 2) + Math.pow(right.cy - bottomLeft.cy, 2));
   const lineGreenLength = Math.sqrt(Math.pow(topLeft.cx - right.cx, 2) + Math.pow(topLeft.cy - right.cy, 2));
 
+  const isBuilding = phase === 'building';
+  const isBuilt = phase === 'built' || phase === 'transitioning' || phase === 'arrived';
+  const isTransitioning = phase === 'transitioning' || phase === 'arrived' || phase === 'hidden';
+  const showFloatingBalls = redBall && greenBall && blueBall && phase !== 'loading' && phase !== 'building';
+
+  // Ball size in screen pixels
+  const logoHeight = size * (viewBox.height / viewBox.width);
+  const ballSize = (dotRadius / viewBox.width) * size * 2;
+
   return (
-    <div className="logo-container" style={{ width: size, height: size * (viewBox.height / viewBox.width) }}>
-      <svg
-        viewBox={`0 0 ${viewBox.width} ${viewBox.height}`}
-        width={size}
-        height={size * (viewBox.height / viewBox.width)}
-        className={`logo-svg ${isLoaded ? 'loaded' : ''} ${animationDone ? 'done' : ''}`}
-        preserveAspectRatio="xMidYMid meet"
+    <>
+      {/* SVG Logo */}
+      <div 
+        ref={containerRef}
+        className="logo-container"
+        style={{ 
+          width: size, 
+          height: logoHeight,
+          opacity: isTransitioning ? 0 : 1,
+          transition: 'opacity 0.5s ease',
+          position: 'relative',
+          zIndex: 2,
+        }}
       >
-        {/* Static lines (shown after animation) */}
-        <g className="static-lines">
-          <line x1={topLeft.cx} y1={topLeft.cy} x2={bottomLeft.cx} y2={bottomLeft.cy}
-            stroke={bottomLeft.fill} strokeWidth={lineWidth} strokeLinecap="round" />
-          <line x1={bottomLeft.cx} y1={bottomLeft.cy} x2={right.cx} y2={right.cy}
-            stroke={right.fill} strokeWidth={lineWidth} strokeLinecap="round" />
-          <line x1={topLeft.cx} y1={topLeft.cy} x2={right.cx} y2={right.cy}
-            stroke={topLeft.fill} strokeWidth={lineWidth} strokeLinecap="round" />
-        </g>
+        <svg
+          viewBox={`0 0 ${viewBox.width} ${viewBox.height}`}
+          width={size}
+          height={logoHeight}
+          style={{ overflow: 'visible' }}
+        >
+          {/* Lines - animated during build, retract into START point balls when transitioning */}
+          <g>
+            {/* Red line - from GREEN (start) to red (end), retracts INTO GREEN ball */}
+            <line x1={topLeft.cx} y1={topLeft.cy} x2={bottomLeft.cx} y2={bottomLeft.cy}
+              stroke={bottomLeft.fill} strokeWidth={lineWidth} strokeLinecap="round" 
+              style={{ 
+                strokeDasharray: lineRedLength, 
+                strokeDashoffset: isTransitioning ? lineRedLength : ((isBuilding || isBuilt) ? 0 : lineRedLength),
+                filter: isTransitioning ? `drop-shadow(0 0 15px ${bottomLeft.fill})` : 'none',
+                transition: isTransitioning 
+                  ? 'stroke-dashoffset 0.8s ease-in, filter 0.2s ease' 
+                  : 'stroke-dashoffset 0.6s linear 0.12s',
+              }} 
+            />
+            {/* Blue line - from RED (start) to blue (end), retracts INTO RED ball */}
+            <line x1={bottomLeft.cx} y1={bottomLeft.cy} x2={right.cx} y2={right.cy}
+              stroke={right.fill} strokeWidth={lineWidth} strokeLinecap="round" 
+              style={{ 
+                strokeDasharray: lineBlueLength, 
+                strokeDashoffset: isTransitioning ? lineBlueLength : ((isBuilding || isBuilt) ? 0 : lineBlueLength),
+                filter: isTransitioning ? `drop-shadow(0 0 15px ${right.fill})` : 'none',
+                transition: isTransitioning 
+                  ? 'stroke-dashoffset 0.8s ease-in 0.1s, filter 0.2s ease' 
+                  : 'stroke-dashoffset 0.6s linear 0.92s',
+              }} 
+            />
+            {/* Green line - from BLUE (start) to green (end), retracts INTO BLUE ball */}
+            <line x1={right.cx} y1={right.cy} x2={topLeft.cx} y2={topLeft.cy}
+              stroke={topLeft.fill} strokeWidth={lineWidth} strokeLinecap="round" 
+              style={{ 
+                strokeDasharray: lineGreenLength, 
+                strokeDashoffset: isTransitioning ? lineGreenLength : ((isBuilding || isBuilt) ? 0 : lineGreenLength),
+                filter: isTransitioning ? `drop-shadow(0 0 15px ${topLeft.fill})` : 'none',
+                transition: isTransitioning 
+                  ? 'stroke-dashoffset 0.8s ease-in 0.2s, filter 0.2s ease' 
+                  : 'stroke-dashoffset 0.6s linear 1.72s',
+              }} 
+            />
+          </g>
 
-        {/* Animated lines (trails) */}
-        <g className="animated-lines">
-          <line x1={topLeft.cx} y1={topLeft.cy} x2={bottomLeft.cx} y2={bottomLeft.cy}
-            stroke={bottomLeft.fill} strokeWidth={lineWidth} strokeLinecap="round" 
-            className="line line-red" style={{ strokeDasharray: lineRedLength, strokeDashoffset: lineRedLength }} />
-          <line x1={bottomLeft.cx} y1={bottomLeft.cy} x2={right.cx} y2={right.cy}
-            stroke={right.fill} strokeWidth={lineWidth} strokeLinecap="round" 
-            className="line line-blue" style={{ strokeDasharray: lineBlueLength, strokeDashoffset: lineBlueLength }} />
-          <line x1={right.cx} y1={right.cy} x2={topLeft.cx} y2={topLeft.cy}
-            stroke={topLeft.fill} strokeWidth={lineWidth} strokeLinecap="round" 
-            className="line line-green" style={{ strokeDasharray: lineGreenLength, strokeDashoffset: lineGreenLength }} />
-        </g>
+          {/* Static dots in SVG (hidden when floating balls take over) */}
+          <g style={{ opacity: isBuilt && !showFloatingBalls ? 1 : 0, transition: 'opacity 0.1s ease' }}>
+            <circle cx={bottomLeft.cx} cy={bottomLeft.cy} r={dotRadius} fill={bottomLeft.fill} />
+            <circle cx={right.cx} cy={right.cy} r={dotRadius} fill={right.fill} />
+            <circle cx={topLeft.cx} cy={topLeft.cy} r={dotRadius} fill={topLeft.fill} />
+          </g>
+          
+          {/* Build animation balls - appear sequentially */}
+          <g style={{ opacity: isBuilt ? 0 : 1 }}>
+            {/* Red ball - appears first, travels from green position to red position */}
+            <circle 
+              r={dotRadius} fill={bottomLeft.fill}
+              cx={isBuilding ? bottomLeft.cx : topLeft.cx}
+              cy={isBuilding ? bottomLeft.cy : topLeft.cy}
+              style={{ 
+                opacity: isBuilding ? 1 : 0,
+                transition: 'cx 0.6s linear 0.1s, cy 0.6s linear 0.1s, opacity 0.1s ease 0.1s',
+              }}
+            />
+            {/* Blue ball - appears second, travels from red position to blue position */}
+            <circle 
+              r={dotRadius} fill={right.fill}
+              cx={isBuilding ? right.cx : bottomLeft.cx}
+              cy={isBuilding ? right.cy : bottomLeft.cy}
+              style={{ 
+                opacity: isBuilding ? 1 : 0,
+                transition: 'cx 0.6s linear 0.9s, cy 0.6s linear 0.9s, opacity 0.1s ease 0.9s',
+              }}
+            />
+            {/* Green ball - appears third, travels from blue position to green position */}
+            <circle 
+              r={dotRadius} fill={topLeft.fill}
+              cx={isBuilding ? topLeft.cx : right.cx}
+              cy={isBuilding ? topLeft.cy : right.cy}
+              style={{ 
+                opacity: isBuilding ? 1 : 0,
+                transition: 'cx 0.6s linear 1.7s, cy 0.6s linear 1.7s, opacity 0.1s ease 1.7s',
+              }}
+            />
+          </g>
+        </svg>
+      </div>
 
-        {/* Static dots (shown after animation) */}
-        <g className="static-dots">
-          <circle cx={bottomLeft.cx} cy={bottomLeft.cy} r={dotRadius} fill={bottomLeft.fill} />
-          <circle cx={right.cx} cy={right.cy} r={dotRadius} fill={right.fill} />
-          <circle cx={topLeft.cx} cy={topLeft.cy} r={dotRadius} fill={topLeft.fill} />
-        </g>
-        
-        {/* Animated balls */}
-        <circle r={dotRadius} fill={bottomLeft.fill} className="ball ball-red" />
-        <circle r={dotRadius} fill={right.fill} className="ball ball-blue" />
-        <circle r={dotRadius} fill={topLeft.fill} className="ball ball-green" />
-      </svg>
-
-      <style jsx>{`
-        .logo-container {
-          position: relative;
-          z-index: 2;
-        }
-
-        .logo-svg {
-          overflow: visible;
-        }
-
-
-        /* Hide static elements until animation done */
-        .static-lines, .static-dots {
-          opacity: 0;
-        }
-        .logo-svg.done .static-lines,
-        .logo-svg.done .static-dots {
-          opacity: 1;
-        }
-
-        /* Hide animated elements after done */
-        .logo-svg.done .animated-lines,
-        .logo-svg.done .ball {
-          opacity: 0;
-        }
-
-        /* Animated lines */
-        .animated-lines .line {
-          opacity: 0;
-        }
-
-        .logo-svg.loaded .animated-lines .line {
-          opacity: 1;
-          stroke-dashoffset: 0 !important;
-        }
-
-        .logo-svg.loaded .line-red {
-          transition: stroke-dashoffset 0.6s linear, opacity 0.05s;
-          transition-delay: 0.12s;
-        }
-        .logo-svg.loaded .line-blue {
-          transition: stroke-dashoffset 0.6s linear, opacity 0.05s;
-          transition-delay: 0.92s;
-        }
-        .logo-svg.loaded .line-green {
-          transition: stroke-dashoffset 0.6s linear, opacity 0.05s;
-          transition-delay: 1.72s;
-        }
-
-        /* Animated balls */
-        .ball { opacity: 0; }
-
-        .ball-red {
-          cx: ${topLeft.cx};
-          cy: ${topLeft.cy};
-        }
-        .logo-svg.loaded .ball-red {
-          opacity: 1;
-          cx: ${bottomLeft.cx};
-          cy: ${bottomLeft.cy};
-          transition: cx 0.6s linear, cy 0.6s linear, opacity 0.1s ease;
-          transition-delay: 0.1s;
-        }
-
-        .ball-blue {
-          cx: ${bottomLeft.cx};
-          cy: ${bottomLeft.cy};
-        }
-        .logo-svg.loaded .ball-blue {
-          opacity: 1;
-          cx: ${right.cx};
-          cy: ${right.cy};
-          transition: cx 0.6s linear, cy 0.6s linear, opacity 0.1s ease;
-          transition-delay: 0.9s;
-        }
-
-        .ball-green {
-          cx: ${right.cx};
-          cy: ${right.cy};
-        }
-        .logo-svg.loaded .ball-green {
-          opacity: 1;
-          cx: ${topLeft.cx};
-          cy: ${topLeft.cy};
-          transition: cx 0.6s linear, cy 0.6s linear, opacity 0.1s ease;
-          transition-delay: 1.7s;
-        }
-      `}</style>
-    </div>
+      {/* Floating balls that fly to orbital positions */}
+      {showFloatingBalls && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 15 }}>
+          {/* Red ball */}
+          {redBall && (
+            <div
+              style={{
+                position: 'absolute',
+                left: redBall.x,
+                top: redBall.y,
+                width: ballSize,
+                height: ballSize,
+                borderRadius: '50%',
+                backgroundColor: bottomLeft.fill,
+                transform: 'translate(-50%, -50%)',
+                transition: 'left 1.8s cubic-bezier(0.25, 0.1, 0.25, 1), top 1.8s cubic-bezier(0.25, 0.1, 0.25, 1), opacity 0.3s ease',
+                opacity: redBall.visible ? 1 : 0,
+                boxShadow: `0 0 ${ballSize}px ${bottomLeft.fill}`,
+              }}
+            />
+          )}
+          {/* Green ball */}
+          {greenBall && (
+            <div
+              style={{
+                position: 'absolute',
+                left: greenBall.x,
+                top: greenBall.y,
+                width: ballSize,
+                height: ballSize,
+                borderRadius: '50%',
+                backgroundColor: topLeft.fill,
+                transform: 'translate(-50%, -50%)',
+                transition: 'left 1.8s cubic-bezier(0.25, 0.1, 0.25, 1) 0.1s, top 1.8s cubic-bezier(0.25, 0.1, 0.25, 1) 0.1s, opacity 0.3s ease',
+                opacity: greenBall.visible ? 1 : 0,
+                boxShadow: `0 0 ${ballSize}px ${topLeft.fill}`,
+              }}
+            />
+          )}
+          {/* Blue ball */}
+          {blueBall && (
+            <div
+              style={{
+                position: 'absolute',
+                left: blueBall.x,
+                top: blueBall.y,
+                width: ballSize,
+                height: ballSize,
+                borderRadius: '50%',
+                backgroundColor: right.fill,
+                transform: 'translate(-50%, -50%)',
+                transition: 'left 1.8s cubic-bezier(0.25, 0.1, 0.25, 1) 0.2s, top 1.8s cubic-bezier(0.25, 0.1, 0.25, 1) 0.2s, opacity 0.3s ease',
+                opacity: blueBall.visible ? 1 : 0,
+                boxShadow: `0 0 ${ballSize}px ${right.fill}`,
+              }}
+            />
+          )}
+        </div>
+      )}
+    </>
   );
 }
-

@@ -1,11 +1,52 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import AnimatedLogo from './components/AnimatedLogo';
 import MatrixText from './components/MatrixText';
+import ProjectPlanets from './components/ProjectPlanets';
+import Sun from './components/Sun';
+
+// Physics constants - gentle attraction, stars should drift not cluster
+const GRAVITY_STRENGTH = 150; // Much weaker gravity
+const GRAVITY_FALLOFF_START = 200; // Start reducing gravity at this distance
+const REPULSION_RADIUS = 80; // Larger repulsion zone
+const REPULSION_STRENGTH = 100; // Stronger repulsion to prevent clustering
+const MAX_VELOCITY = 1.5; // Slower movement
+const DAMPING = 0.995; // Less friction, more drift
+const ORBIT_TENDENCY = 0.6; // More orbital motion, less direct attraction
+const DRIFT_STRENGTH = 0.02; // Gentle random drift
+
+interface Planet {
+  x: number;
+  y: number;
+  mass: number;
+}
 
 export default function Home() {
   const [showText, setShowText] = useState(false);
+  const [showSolarSystem, setShowSolarSystem] = useState(false);
+  const planetsRef = useRef<Planet[]>([]);
+  
+  // Callback when ProjectPlanets generates positions
+  const handlePositionsGenerated = useCallback((positions: { x: number; y: number }[]) => {
+    planetsRef.current = positions.map((pos, index) => ({
+      x: pos.x,
+      y: pos.y,
+      mass: 1 + (index % 3) * 0.5,
+    }));
+  }, []);
+
+  // Called when logo animation completes
+  const handleLogoAnimationComplete = useCallback(() => {
+    // Nothing special here yet
+  }, []);
+
+  // Called when transitioning to solar system
+  const handleTransitionToSolarSystem = useCallback(() => {
+    setTimeout(() => {
+      setShowSolarSystem(true);
+    }, 500);
+  }, []);
 
   useEffect(() => {
     // Start text animation after logo animation
@@ -14,7 +55,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    // Particle animation setup
+    // Particle animation setup with physics
     const canvas = document.getElementById('space-canvas') as HTMLCanvasElement;
     if (!canvas) {
       console.error("Canvas element not found");
@@ -25,50 +66,138 @@ export default function Home() {
       console.error("Unable to get canvas context");
       return;
     }
+    
     const particlesArray: Particle[] = [];
-    const numberOfParticles = 100;
-    const startDelay = 3000; // Start after logo and text animation
-    const fadeInDuration = 2000; // Total time for all stars to fade in
+    const numberOfParticles = 200;
+    const startDelay = 6600; // Stars appear when balls arrive
+    const fadeInDuration = 3000;
     let startTime: number | null = null;
+    let physicsActive = false;
+
+    // Get planets from ref (set by ProjectPlanets)
+    const getPlanets = () => planetsRef.current;
 
     class Particle {
       x: number;
       y: number;
       size: number;
-      speedX: number;
-      speedY: number;
+      vx: number;
+      vy: number;
       opacity: number;
       targetOpacity: number;
-      fadeInDelay: number; // When this particle starts fading in
+      fadeInDelay: number;
+      baseSpeed: number;
       
       constructor(index: number) {
         this.x = Math.random() * canvas.width;
         this.y = Math.random() * canvas.height;
-        this.size = Math.random() * 2 + 1;
-        this.speedX = Math.random() * 1 - 0.5;
-        this.speedY = Math.random() * 1 - 0.5;
+        this.size = Math.random() * 2 + 0.5;
+        this.baseSpeed = Math.random() * 0.5 + 0.1;
+        const angle = Math.random() * Math.PI * 2;
+        this.vx = Math.cos(angle) * this.baseSpeed;
+        this.vy = Math.sin(angle) * this.baseSpeed;
         this.opacity = 0;
-        this.targetOpacity = Math.random() * 0.5 + 0.5; // Random brightness
-        // Stagger fade-in: each particle has a random delay within the duration
+        this.targetOpacity = Math.random() * 0.5 + 0.5;
         this.fadeInDelay = Math.random() * fadeInDuration;
       }
       
-      update(elapsed: number) {
-        this.x += this.speedX;
-        this.y += this.speedY;
+      applyGravity() {
+        const planets = getPlanets();
+        if (!physicsActive || planets.length === 0) return;
 
-        if (this.x < 0 || this.x > canvas.width) this.x = Math.random() * canvas.width;
-        if (this.y < 0 || this.y > canvas.height) this.y = Math.random() * canvas.height;
+        // Add gentle random drift to keep stars spread out
+        this.vx += (Math.random() - 0.5) * DRIFT_STRENGTH;
+        this.vy += (Math.random() - 0.5) * DRIFT_STRENGTH;
+
+        planets.forEach(planet => {
+          const dx = planet.x - this.x;
+          const dy = planet.y - this.y;
+          const distSq = dx * dx + dy * dy;
+          const dist = Math.sqrt(distSq);
+          
+          if (dist < 1) return;
+          
+          const nx = dx / dist;
+          const ny = dy / dist;
+          
+          if (dist < REPULSION_RADIUS) {
+            // Strong repulsion when too close - prevents clustering
+            const repulsionForce = REPULSION_STRENGTH / (dist * dist);
+            this.vx -= nx * repulsionForce * 0.05;
+            this.vy -= ny * repulsionForce * 0.05;
+          } else if (dist < GRAVITY_FALLOFF_START) {
+            // Gentle gravity that fades with distance
+            const gravityFactor = 1 - (dist / GRAVITY_FALLOFF_START) * 0.7; // Reduce to 30% at edge
+            const force = (GRAVITY_STRENGTH * planet.mass * gravityFactor) / distSq;
+            
+            // Mostly orbital motion (perpendicular), less direct attraction
+            const perpX = -ny * ORBIT_TENDENCY;
+            const perpY = nx * ORBIT_TENDENCY;
+            const directX = nx * (1 - ORBIT_TENDENCY);
+            const directY = ny * (1 - ORBIT_TENDENCY);
+            
+            this.vx += (directX + perpX) * force * 0.002;
+            this.vy += (directY + perpY) * force * 0.002;
+          }
+          // Beyond GRAVITY_FALLOFF_START: no gravity, stars just drift
+        });
+      }
+      
+      update(elapsed: number) {
+        this.applyGravity();
         
-        // Progressive fade in after delay
+        // Apply damping
+        this.vx *= DAMPING;
+        this.vy *= DAMPING;
+        
+        // Clamp velocity
+        const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+        if (speed > MAX_VELOCITY) {
+          this.vx = (this.vx / speed) * MAX_VELOCITY;
+          this.vy = (this.vy / speed) * MAX_VELOCITY;
+        }
+        
+        // Update position
+        this.x += this.vx;
+        this.y += this.vy;
+
+        // Wrap around edges
+        if (this.x < -10) this.x = canvas.width + 10;
+        if (this.x > canvas.width + 10) this.x = -10;
+        if (this.y < -10) this.y = canvas.height + 10;
+        if (this.y > canvas.height + 10) this.y = -10;
+        
+        // Progressive fade in
         if (elapsed > startDelay + this.fadeInDelay) {
-          const fadeProgress = Math.min(1, (elapsed - startDelay - this.fadeInDelay) / 800);
+          const fadeProgress = Math.min(1, (elapsed - startDelay - this.fadeInDelay) / 1200);
           this.opacity = fadeProgress * this.targetOpacity;
         }
       }
       
       draw() {
         if (this.opacity <= 0) return;
+        
+        const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+        const trailLength = Math.min(speed * 3, 8);
+        
+        if (trailLength > 1) {
+          const gradient = ctx!.createLinearGradient(
+            this.x + this.vx * trailLength,
+            this.y + this.vy * trailLength,
+            this.x,
+            this.y
+          );
+          gradient.addColorStop(0, `rgba(255, 255, 255, 0)`);
+          gradient.addColorStop(1, `rgba(255, 255, 255, ${this.opacity})`);
+          
+          ctx!.strokeStyle = gradient;
+          ctx!.lineWidth = this.size * 0.8;
+          ctx!.beginPath();
+          ctx!.moveTo(this.x + this.vx * trailLength, this.y + this.vy * trailLength);
+          ctx!.lineTo(this.x, this.y);
+          ctx!.stroke();
+        }
+        
         ctx!.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
         ctx!.beginPath();
         ctx!.arc(this.x, this.y, this.size, 0, Math.PI * 2);
@@ -81,6 +210,11 @@ export default function Home() {
       for (let i = 0; i < numberOfParticles; i++) {
         particlesArray.push(new Particle(i));
       }
+      
+      // Activate physics after stars and planets appear
+      setTimeout(() => {
+        physicsActive = true;
+      }, 8000);
     }
 
     function animate(timestamp: number) {
@@ -127,19 +261,35 @@ export default function Home() {
         zIndex: 1,
       }}></canvas>
 
-      <AnimatedLogo size={240} />
+      <ProjectPlanets 
+        startDelay={showSolarSystem ? 0 : 6400} 
+        socialOrbitDelay={500} // Social planets stay still for 500ms after appearing, then start orbiting
+        onPositionsGenerated={handlePositionsGenerated} 
+      />
+
+      {/* Sun in the center - appears after logo fades */}
+      <Sun size={70} visible={showSolarSystem} />
+
+      {/* Animated Logo - balls fly to orbital positions */}
+      <AnimatedLogo 
+        size={240} 
+        onAnimationComplete={handleLogoAnimationComplete}
+        onBallsInPosition={handleTransitionToSolarSystem}
+      />
 
       <h1 
         className="name"
         style={{
+          position: 'absolute',
+          top: '2rem',
+          left: '2rem',
           fontFamily: "Orbitron",
           color: "white",
-          fontSize: "3vh",
-          textAlign: "center",
-          marginTop: "0vh",
-          zIndex: 2,
-          minHeight: '1.5em',
-          letterSpacing: '0.1em',
+          fontSize: '1.5rem',
+          textAlign: "left",
+          zIndex: 20,
+          letterSpacing: '0.15em',
+          textTransform: 'uppercase',
         }}
       >
         {showText && (
