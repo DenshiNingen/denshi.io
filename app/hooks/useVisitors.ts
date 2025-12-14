@@ -286,7 +286,7 @@ export function useVisitors() {
       pusher.unsubscribe('presence-visitors');
       pusher.disconnect();
     };
-  }, [addVisitor, removeVisitor, currentUserId]);
+  }, [addVisitor, removeVisitor, currentUserId, addPrivateMessage]);
 
   return {
     visitors,

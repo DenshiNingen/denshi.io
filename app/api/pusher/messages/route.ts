@@ -46,11 +46,11 @@ export async function GET(request: NextRequest) {
     const oneHourAgo = Date.now() - (MESSAGE_TTL * 1000);
     
     // Get messages with timestamp > oneHourAgo, ordered by timestamp ascending
-    const messages = await redisInstance.zrangebyscore(redisKey, oneHourAgo, '+inf');
+    const messages = await redisInstance.zrange(redisKey, oneHourAgo, '+inf', { byScore: true });
     
     // Parse messages
-    const parsedMessages = messages
-      .map((msg: string | object) => {
+    const parsedMessages = (messages as (string | object)[])
+      .map((msg) => {
         if (typeof msg === 'string') {
           try {
             return JSON.parse(msg);
