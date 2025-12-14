@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
 
+// Force dynamic rendering - this route cannot be statically generated
+export const dynamic = 'force-dynamic';
+
 let redis: Redis | null = null;
 
 const MESSAGE_TTL = 3600; // 1 hour in seconds
