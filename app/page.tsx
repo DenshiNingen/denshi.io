@@ -277,29 +277,53 @@ export default function Home() {
         onBallsInPosition={handleTransitionToSolarSystem}
       />
 
-      <h1 
-        className="name"
+      <div 
+        className="header-text"
         style={{
           position: 'absolute',
           top: '2rem',
           left: '2rem',
-          fontFamily: "Orbitron",
-          color: "white",
-          fontSize: '1.5rem',
           textAlign: "left",
           zIndex: 20,
-          letterSpacing: '0.15em',
-          textTransform: 'uppercase',
         }}
       >
-        {showText && (
-          <MatrixText 
-            text="Denshi Ningen" 
-            charRevealTime={25}
-            scrambleIterations={2}
-          />
-        )}
-      </h1>
+        <h1 
+          style={{
+            fontFamily: "Orbitron",
+            color: "white",
+            fontSize: '1.5rem',
+            letterSpacing: '0.15em',
+            textTransform: 'uppercase',
+            margin: 0,
+          }}
+        >
+          {showText && (
+            <MatrixText 
+              text="Denshi Ningen" 
+              charRevealTime={25}
+              scrambleIterations={2}
+            />
+          )}
+        </h1>
+        <p
+          style={{
+            fontFamily: "Orbitron",
+            color: "rgba(255, 255, 255, 0.6)",
+            fontSize: '0.75rem',
+            letterSpacing: '0.1em',
+            marginTop: '0.5rem',
+          }}
+        >
+          {showText && (
+            <MatrixText 
+              text="電子人間 | Half human, half machine. Creating stuff."
+              startDelay={800}
+              charRevealTime={20}
+              scrambleIterations={1}
+            />
+          )}
+        </p>
+      </div>
     </main>
   );
 }
