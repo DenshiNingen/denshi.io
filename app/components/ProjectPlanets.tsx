@@ -85,6 +85,7 @@ export default function ProjectPlanets({
   const dragOffsetRef = useRef({ x: 0, y: 0 });
   const onPositionsGeneratedRef = useRef(onPositionsGenerated);
   const socialOrbitingRef = useRef(false);
+  const hasDraggedRef = useRef(false); // Track if actual dragging occurred
   
   // Keep callback ref updated
   useEffect(() => {
@@ -268,6 +269,7 @@ export default function ProjectPlanets({
     if (!draggingId) return;
 
     const handleMouseMove = (e: MouseEvent) => {
+      hasDraggedRef.current = true; // Mark that actual dragging happened
       const pd = planetsRef.current.find(p => p.planet.id === draggingId);
       if (pd) {
         pd.freedX = e.clientX - dragOffsetRef.current.x;
@@ -277,8 +279,19 @@ export default function ProjectPlanets({
 
     const handleMouseUp = () => {
       const pd = planetsRef.current.find(p => p.planet.id === draggingId);
-      if (pd) {
-        pd.isFreed = true;
+      if (pd && pd.freedX !== undefined && pd.freedY !== undefined) {
+        // Calculate new angle AND radius based on drop position
+        const dx = pd.freedX - centerRef.current.x;
+        const dy = pd.freedY - centerRef.current.y;
+        const newAngle = Math.atan2(dy, dx);
+        const newRadius = Math.sqrt(dx * dx + dy * dy);
+        
+        // Update both angle and orbit radius to match drop position
+        pd.angle = newAngle;
+        pd.orbitRadius = newRadius;
+        
+        // Return to orbit after dragging
+        pd.isFreed = false;
       }
       setDraggingId(null);
     };
@@ -330,6 +343,8 @@ export default function ProjectPlanets({
   const handleDragStart = useCallback((e: React.MouseEvent, projectId: string, planetX: number, planetY: number) => {
     e.preventDefault();
     e.stopPropagation();
+    
+    hasDraggedRef.current = false; // Reset drag flag
     
     const planet = planetsRef.current.find(p => p.planet.id === projectId);
     if (planet) {
@@ -390,7 +405,8 @@ export default function ProjectPlanets({
   }, [visible]);
 
   const handleClick = useCallback((e: React.MouseEvent, planet: Planet) => {
-    if (planet.url) {
+    // Only open link if no dragging occurred
+    if (!hasDraggedRef.current && planet.url) {
       window.open(planet.url, '_blank');
     }
   }, []);
@@ -589,6 +605,15 @@ export default function ProjectPlanets({
           opacity: 1;
         }
 
+        /* Clickable planets (not dummy) show pointer cursor on hover */
+        .planet:not(.dummy-planet) {
+          cursor: pointer;
+        }
+
+        .planet:not(.dummy-planet):active {
+          cursor: grabbing;
+        }
+
         .planet.dragging {
           cursor: grabbing !important;
           z-index: 100 !important;
@@ -617,11 +642,20 @@ export default function ProjectPlanets({
           border-radius: 50%;
           position: relative;
           z-index: 2;
-          transition: transform 0.2s ease, box-shadow 0.2s ease;
+          transition: transform 0.2s ease, box-shadow 0.2s ease, border 0.2s ease;
           animation: pulse-planet 2s ease-in-out infinite;
           display: flex;
           align-items: center;
           justify-content: center;
+        }
+
+        /* Clickable planets have a subtle ring */
+        .planet:not(.dummy-planet) .planet-core {
+          border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .planet:not(.dummy-planet):hover .planet-core {
+          border-color: rgba(255, 255, 255, 0.8);
         }
 
         .planet-icon {
@@ -668,27 +702,35 @@ export default function ProjectPlanets({
           filter: blur(12px);
         }
 
+        /* Dummy planets - subtle, non-interactive appearance */
+        .dummy-planet {
+          cursor: default;
+        }
+
         .dummy-planet .planet-core {
           animation: pulse-dummy 4s ease-in-out infinite;
-          opacity: 0.7;
+          opacity: 0.4;
+          border: none !important;
         }
 
         .dummy-planet .planet-glow {
-          opacity: 0.15;
-          filter: blur(6px);
+          opacity: 0.1;
+          filter: blur(4px);
         }
 
         .dummy-planet:hover .planet-core {
-          opacity: 1;
+          opacity: 0.6;
+          transform: scale(1.1);
         }
 
         .dummy-planet:hover .planet-glow {
-          opacity: 0.4;
+          opacity: 0.2;
+          transform: translate(-50%, -50%) scale(1.2);
         }
 
         @keyframes pulse-dummy {
-          0%, 100% { box-shadow: 0 0 3px currentColor; opacity: 0.6; }
-          50% { box-shadow: 0 0 8px currentColor; opacity: 0.8; }
+          0%, 100% { box-shadow: 0 0 2px currentColor; opacity: 0.3; }
+          50% { box-shadow: 0 0 5px currentColor; opacity: 0.5; }
         }
 
         .planet:hover {
