@@ -41,9 +41,11 @@ const nouns = [
   'Navigator', 'Stargazer', 'Dreamer', 'Pilgrim', 'Rover', 'Sentinel'
 ];
 
-function generateExplorerName(): string {
-  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-  const noun = nouns[Math.floor(Math.random() * nouns.length)];
+function generateExplorerName(visitorId: string): string {
+  // Generate deterministic name based on visitor ID
+  const hash = visitorId.split('').reduce((acc, char, i) => acc + char.charCodeAt(0) * (i + 1), 0);
+  const adj = adjectives[hash % adjectives.length];
+  const noun = nouns[(hash * 7) % nouns.length];
   return `${adj} ${noun}`;
 }
 
@@ -89,10 +91,14 @@ export async function POST(request: NextRequest) {
     
     const socketId = params.get('socket_id');
     const channelName = params.get('channel_name');
+    const deviceId = params.get('device_id');
     
     if (!socketId || !channelName) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
     }
+    
+    // Use device ID if provided, otherwise generate one based on socket
+    const visitorId = deviceId || `visitor_${socketId}_${Date.now()}`;
     
     // Get visitor info from headers
     const userAgent = request.headers.get('user-agent') || '';
@@ -100,18 +106,19 @@ export async function POST(request: NextRequest) {
                     request.headers.get('cf-ipcountry') || // Cloudflare
                     '';
     
-    // Generate a random color tint for this visitor (white-ish with slight variation)
-    const hue = Math.floor(Math.random() * 360);
-    const saturation = Math.floor(Math.random() * 15); // Low saturation for white-ish
-    const lightness = 85 + Math.floor(Math.random() * 10); // High lightness for white
+    // Generate a deterministic color based on visitor ID (so it stays the same)
+    const hash = visitorId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const hue = hash % 360;
+    const saturation = 5 + (hash % 10); // Low saturation for white-ish
+    const lightness = 85 + (hash % 10); // High lightness for white
     
     // For presence channels, we need to provide user info
     const presenceData = {
-      user_id: `visitor_${socketId}_${Date.now()}`,
+      user_id: visitorId,
       user_info: {
         joinedAt: Date.now(),
         color: `hsl(${hue}, ${saturation}%, ${lightness}%)`,
-        name: generateExplorerName(),
+        name: generateExplorerName(visitorId),
         browser: getBrowserName(userAgent),
         device: getDeviceType(userAgent),
         country: country,

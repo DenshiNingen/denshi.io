@@ -4,6 +4,8 @@ import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { allPlanets, Planet } from '../data/planets';
 import { useVisitors, Visitor } from '../hooks/useVisitors';
 import MatrixText from './MatrixText';
+import Chat from './Chat';
+import PrivateChat from './PrivateChat';
 
 // Simple SVG icons for social planets
 function getSocialIcon(icon: string): React.ReactNode {
@@ -93,9 +95,14 @@ export default function ProjectPlanets({
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const [highlightCurrentUser, setHighlightCurrentUser] = useState(false);
   const [showCounter, setShowCounter] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const lastSeenMessageCountRef = useRef(-1); // -1 means not initialized
+  const initialLoadDoneRef = useRef(false);
+  const [privateChatTarget, setPrivateChatTarget] = useState<Visitor | null>(null);
   
   // Real-time visitors
-  const { visitors, visitorCount, isConnected } = useVisitors();
+  const { visitors, visitorCount, isConnected, messages, sendMessage, currentUserId, currentUserName, currentUserFlag, privateNotifications, clearPrivateNotification, getPrivateMessages, setPrivateMessagesForChannel } = useVisitors();
   
   // Use refs for animation state to avoid re-render issues
   const planetsRef = useRef<PlanetData[]>([]);
@@ -525,11 +532,22 @@ export default function ProjectPlanets({
 
   // Double-click to return to orbit
   const handleDoubleClick = useCallback((projectId: string) => {
-    const planet = planetsRef.current.find(p => p.planet.id === projectId);
-    if (planet) {
-      planet.isFreed = false;
+    const planetData = planetsRef.current.find(p => p.planet.id === projectId);
+    if (planetData) {
+      // If it's a visitor planet (not current user), open private chat
+      if (planetData.planet.isVisitor && !planetData.planet.isCurrentUser) {
+        const visitor = visitors.find(v => v.id === projectId);
+        if (visitor) {
+          setPrivateChatTarget(visitor);
+          // Clear notification for this user
+          clearPrivateNotification(visitor.id);
+        }
+      } else {
+        // Return to orbit for non-visitor planets
+        planetData.isFreed = false;
+      }
     }
-  }, []);
+  }, [visitors, clearPrivateNotification]);
 
   // Calculate connections between planets
   const connections = useMemo((): Connection[] => {
@@ -571,6 +589,28 @@ export default function ProjectPlanets({
     const timer = setTimeout(() => setShowCounter(true), 800);
     return () => clearTimeout(timer);
   }, [connectionsVisible, isConnected]);
+
+  // Track unread messages
+  useEffect(() => {
+    // First time messages arrive (initial load from Redis), don't count as unread
+    if (!initialLoadDoneRef.current && messages.length > 0) {
+      lastSeenMessageCountRef.current = messages.length;
+      initialLoadDoneRef.current = true;
+      return;
+    }
+    
+    if (chatOpen) {
+      // When chat opens, mark all as read
+      lastSeenMessageCountRef.current = messages.length;
+      setUnreadCount(0);
+    } else if (initialLoadDoneRef.current) {
+      // When chat is closed, count new messages (only after initial load)
+      const newMessages = messages.length - lastSeenMessageCountRef.current;
+      if (newMessages > 0) {
+        setUnreadCount(newMessages);
+      }
+    }
+  }, [chatOpen, messages.length]);
 
   const handleClick = useCallback((e: React.MouseEvent, planet: Planet) => {
     // Only process if no dragging occurred
@@ -638,6 +678,7 @@ export default function ProjectPlanets({
         const isDummy = planet.isDummy;
         const isVisitor = planet.isVisitor;
         const isCurrentUser = planet.isCurrentUser;
+        const hasPrivateMessage = isVisitor && !isCurrentUser && privateNotifications[planet.id];
         
         // Calculate tooltip position based on planet position
         const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1000;
@@ -655,7 +696,7 @@ export default function ProjectPlanets({
         return (
         <div
           key={planet.id}
-          className={`planet ${visible ? 'visible' : ''} ${isDragging ? 'dragging' : ''} ${isNear ? 'near' : ''} ${isFreed ? 'freed' : ''} ${isSocial ? 'social-planet' : ''} ${isDummy ? 'dummy-planet' : ''} ${isVisitor ? 'visitor-planet' : ''} ${isCurrentUser ? 'current-user-planet' : ''} ${isCurrentUser && highlightCurrentUser ? 'highlight-me' : ''}`}
+          className={`planet ${visible ? 'visible' : ''} ${isDragging ? 'dragging' : ''} ${isNear ? 'near' : ''} ${isFreed ? 'freed' : ''} ${isSocial ? 'social-planet' : ''} ${isDummy ? 'dummy-planet' : ''} ${isVisitor ? 'visitor-planet' : ''} ${isCurrentUser ? 'current-user-planet' : ''} ${isCurrentUser && highlightCurrentUser ? 'highlight-me' : ''} ${hasPrivateMessage ? 'has-private-message' : ''}`}
           style={{
             transform: `translate(${x}px, ${y}px) translate(-50%, -50%)`,
             '--planet-size': `${planetSize}px`,
@@ -735,9 +776,10 @@ export default function ProjectPlanets({
       {/* Visitor counter */}
       {showCounter && visitorCount > 0 && (
         <div 
-          className={`visitor-counter ${showCounter ? 'visible' : ''}`}
+          className={`visitor-counter ${showCounter ? 'visible' : ''} ${chatOpen ? 'chat-open' : ''} ${unreadCount > 0 && !chatOpen ? 'has-unread' : ''}`}
           onMouseEnter={() => setHighlightCurrentUser(true)}
           onMouseLeave={() => setHighlightCurrentUser(false)}
+          onDoubleClick={() => setChatOpen(!chatOpen)}
         >
           <div className="visitor-count">
             <MatrixText 
@@ -765,6 +807,38 @@ export default function ProjectPlanets({
           </div>
         </div>
       )}
+
+      {/* Global Chat */}
+      <Chat 
+        messages={messages}
+        onSendMessage={sendMessage}
+        isConnected={isConnected}
+        visitorCount={visitorCount}
+        isOpen={chatOpen}
+        onClose={() => setChatOpen(false)}
+      />
+
+      {/* Private Chat */}
+      {currentUserId && currentUserName && privateChatTarget && (() => {
+        const sorted = [currentUserId, privateChatTarget.id].sort();
+        const channelId = `private-chat-${sorted[0]}-${sorted[1]}`.replace(/[^a-zA-Z0-9-_]/g, '_');
+        return (
+          <PrivateChat
+            isOpen={!!privateChatTarget}
+            onClose={() => setPrivateChatTarget(null)}
+            currentUserId={currentUserId}
+            currentUserName={currentUserName}
+            currentUserFlag={currentUserFlag || '🌍'}
+            targetUser={{
+              id: privateChatTarget.id,
+              name: privateChatTarget.name,
+              flag: privateChatTarget.flag,
+            }}
+            messages={getPrivateMessages(channelId)}
+            onLoadMessages={setPrivateMessagesForChannel}
+          />
+        );
+      })()}
 
       <style jsx>{`
         .project-planets {
@@ -1107,6 +1181,33 @@ export default function ProjectPlanets({
           }
         }
 
+        /* Visitor planet with private message notification */
+        .has-private-message .planet-core {
+          animation: pulse-message 0.8s ease-in-out infinite !important;
+          background: radial-gradient(circle at 30% 30%, #FFD700, #FFA500, #FF8C00) !important;
+        }
+
+        .has-private-message .planet-glow {
+          background: rgba(255, 200, 0, 0.9) !important;
+          animation: glow-message 0.8s ease-in-out infinite;
+        }
+
+        @keyframes pulse-message {
+          0%, 100% { 
+            box-shadow: 0 0 15px rgba(255, 200, 0, 0.8);
+            transform: scale(1);
+          }
+          50% { 
+            box-shadow: 0 0 30px rgba(255, 200, 0, 1);
+            transform: scale(1.15);
+          }
+        }
+
+        @keyframes glow-message {
+          0%, 100% { opacity: 0.5; }
+          50% { opacity: 0.9; }
+        }
+
         /* Current user's planet - special highlight */
         .current-user-planet .planet-core {
           animation: pulse-current-user 2s ease-in-out infinite;
@@ -1238,6 +1339,41 @@ export default function ProjectPlanets({
 
         .visitor-counter:hover .visitor-label {
           color: rgba(255, 215, 0, 0.7);
+        }
+
+        .visitor-counter.chat-open {
+          background: rgba(100, 150, 255, 0.15);
+          border-color: rgba(100, 150, 255, 0.4);
+        }
+
+        .visitor-counter.chat-open .visitor-count {
+          color: rgba(100, 150, 255, 1);
+        }
+
+        .visitor-counter.chat-open .visitor-label {
+          color: rgba(100, 150, 255, 0.8);
+        }
+
+        .visitor-counter.has-unread {
+          background: rgba(255, 100, 100, 0.15);
+          border-color: rgba(255, 100, 100, 0.4);
+        }
+
+        .visitor-counter.visible.has-unread {
+          animation: counter-appear 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards, pulse-unread 1.5s ease-in-out 0.8s infinite;
+        }
+
+        .visitor-counter.has-unread .visitor-count {
+          color: rgba(255, 100, 100, 1);
+        }
+
+        .visitor-counter.has-unread .visitor-label {
+          color: rgba(255, 100, 100, 0.8);
+        }
+
+        @keyframes pulse-unread {
+          0%, 100% { box-shadow: 0 0 5px rgba(255, 100, 100, 0.3); }
+          50% { box-shadow: 0 0 20px rgba(255, 100, 100, 0.6); }
         }
 
         .visitor-count {
