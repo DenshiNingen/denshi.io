@@ -268,7 +268,7 @@ export default function Home() {
       />
 
       {/* Sun in the center - appears after logo fades */}
-      <Sun size={70} visible={showSolarSystem} />
+      {showSolarSystem && <Sun size={70} visible={true} />}
 
       {/* Animated Logo - balls fly to orbital positions */}
       <AnimatedLogo 
