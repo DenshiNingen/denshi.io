@@ -110,9 +110,16 @@ export async function POST(request: NextRequest) {
     
     // Get visitor info from headers
     const userAgent = request.headers.get('user-agent') || '';
+    
+    // Geolocation from Vercel headers
     const country = request.headers.get('x-vercel-ip-country') || 
-                    request.headers.get('cf-ipcountry') || // Cloudflare
+                    request.headers.get('cf-ipcountry') || // Cloudflare fallback
                     '';
+    const region = request.headers.get('x-vercel-ip-country-region') || '';
+    const city = request.headers.get('x-vercel-ip-city') || '';
+    const latitude = request.headers.get('x-vercel-ip-latitude') || '';
+    const longitude = request.headers.get('x-vercel-ip-longitude') || '';
+    const timezone = request.headers.get('x-vercel-ip-timezone') || '';
     
     // Generate a deterministic color based on visitor ID (so it stays the same)
     const hash = visitorId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -135,6 +142,25 @@ export async function POST(request: NextRequest) {
     };
     
     const authResponse = pusherInstance.authorizeChannel(socketId, channelName, presenceData);
+    
+    // Log visitor connection for analytics
+    console.log(JSON.stringify({
+      event: 'visitor_connected',
+      timestamp: new Date().toISOString(),
+      name: presenceData.user_info.name,
+      visitorId: visitorId.substring(0, 20) + '...', // Truncate for privacy
+      isNewVisitor,
+      location: {
+        country,
+        flag: countryToFlag(country),
+        region,
+        city,
+        coordinates: latitude && longitude ? `${latitude}, ${longitude}` : null,
+        timezone,
+      },
+      browser: getBrowserName(userAgent),
+      device: getDeviceType(userAgent),
+    }));
     
     // Create response with auth data
     const response = NextResponse.json(authResponse);
