@@ -63,6 +63,14 @@ export const projectPlanets: Planet[] = [
     color: '#E74C3C', // Red for robotics
     mass: 4, // Significant project
   },
+  {
+    id: 'oscvg',
+    name: 'OsCvg',
+    description: 'Convert SVGs to oscilloscope audio/visuals using Python',
+    url: 'https://github.com/DenshiNingen/OsCvg',
+    color: '#00FF9D', // Oscilloscope Green
+    mass: 4,
+  },
 ];
 
 // Dummy decorative planets (no tooltip, just draggable)
