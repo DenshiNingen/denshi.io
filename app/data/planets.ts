@@ -67,7 +67,7 @@ export const projectPlanets: Planet[] = [
     id: 'oscvg',
     name: 'OsCvg',
     description: 'Convert SVGs to oscilloscope audio/visuals using Python',
-    url: 'https://github.com/DenshiNingen/OsCvg',
+    url: 'https://oscvg.denshi.io',
     color: '#00FF9D', // Oscilloscope Green
     mass: 4,
   },
