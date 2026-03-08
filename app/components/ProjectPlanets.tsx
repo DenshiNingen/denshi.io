@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { allPlanets, Planet } from '../data/planets';
 import { useVisitors, Visitor } from '../hooks/useVisitors';
+import { calculateSocialPlanetPositions } from '../utils/orbitalPositions';
 import MatrixText from './MatrixText';
 import Chat from './Chat';
 import PrivateChat from './PrivateChat';
@@ -152,27 +153,25 @@ export default function ProjectPlanets({
       const radii: number[] = [];
       const allPlanetData: PlanetData[] = [];
       
-      // Social planets: inner orbits (closest to sun)
-      const socialBaseRadius = screenSize * (isMobileLayout ? 0.15 : 0.12);
+      // Social planets: inner orbits (closest to sun) - use shared utility for positions
+      const socialPositions = calculateSocialPlanetPositions(window.innerWidth, window.innerHeight);
+      const socialKeys: ('red' | 'green' | 'blue')[] = ['red', 'green', 'blue'];
       socialPlanetsData.forEach((p, index) => {
         const mass = p.mass || 3;
-        const radius = socialBaseRadius + index * (screenSize * (isMobileLayout ? 0.06 : 0.04));
-        radii.push(radius);
-        
+        const pos = socialPositions[socialKeys[index]];
+        radii.push(pos.radius);
+
         // Social planets orbit faster
         const orbitSpeed = 25 + index * 8;
-        
-        // Spread them out evenly
-        const startAngle = (index * Math.PI * 2) / 3 + Math.PI / 6;
-        
+
         // Larger size for social planets (smaller on mobile)
         const size = isMobileLayout ? 10 + mass * 1.5 : 12 + mass * 2;
-        
+
         allPlanetData.push({
           planet: p,
-          orbitRadius: radius,
+          orbitRadius: pos.radius,
           orbitSpeed,
-          angle: startAngle,
+          angle: pos.angle,
           mass,
           size,
           isFreed: false,

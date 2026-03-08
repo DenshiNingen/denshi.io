@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useRef } from 'react';
+import { calculateSocialPlanetPositions } from '../utils/orbitalPositions';
 
 interface LogoData {
   viewBox: { width: number; height: number };
@@ -12,12 +13,12 @@ function parseSVG(svgText: string): LogoData | null {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgText, 'image/svg+xml');
   const svg = doc.querySelector('svg');
-  
+
   if (!svg) return null;
-  
+
   const viewBoxAttr = svg.getAttribute('viewBox');
   const [, , width, height] = viewBoxAttr?.split(' ').map(Number) || [0, 0, 750, 531];
-  
+
   const circleElements = svg.querySelectorAll('circle');
   const circles = Array.from(circleElements).map(circle => ({
     cx: parseFloat(circle.getAttribute('cx') || '0'),
@@ -25,41 +26,11 @@ function parseSVG(svgText: string): LogoData | null {
     r: parseFloat(circle.getAttribute('r') || '0'),
     fill: circle.getAttribute('fill') || '#FFFFFF',
   }));
-  
+
   const rect = svg.querySelector('rect');
   const lineWidth = parseFloat(rect?.getAttribute('width') || '65');
-  
-  return { viewBox: { width, height }, circles, lineWidth };
-}
 
-// Calculate orbital positions - MUST match ProjectPlanets exactly
-function calculateSocialPlanetPositions(screenWidth: number, screenHeight: number) {
-  const cx = screenWidth / 2;
-  const cy = screenHeight / 2;
-  const screenSize = Math.min(screenWidth, screenHeight);
-  
-  // Layout based on screen size only (same logic as ProjectPlanets)
-  const isSmallScreen = screenSize < 600;
-  const isMobileLayout = isSmallScreen;
-  
-  // Use same values as ProjectPlanets
-  const baseRadius = screenSize * (isMobileLayout ? 0.15 : 0.12);
-  const radiusStep = screenSize * (isMobileLayout ? 0.06 : 0.04);
-  
-  return {
-    red: {
-      x: cx + Math.cos((0 * Math.PI * 2) / 3 + Math.PI / 6) * (baseRadius + 0 * radiusStep),
-      y: cy + Math.sin((0 * Math.PI * 2) / 3 + Math.PI / 6) * (baseRadius + 0 * radiusStep),
-    },
-    green: {
-      x: cx + Math.cos((1 * Math.PI * 2) / 3 + Math.PI / 6) * (baseRadius + 1 * radiusStep),
-      y: cy + Math.sin((1 * Math.PI * 2) / 3 + Math.PI / 6) * (baseRadius + 1 * radiusStep),
-    },
-    blue: {
-      x: cx + Math.cos((2 * Math.PI * 2) / 3 + Math.PI / 6) * (baseRadius + 2 * radiusStep),
-      y: cy + Math.sin((2 * Math.PI * 2) / 3 + Math.PI / 6) * (baseRadius + 2 * radiusStep),
-    },
-  };
+  return { viewBox: { width, height }, circles, lineWidth };
 }
 
 interface AnimatedLogoProps {
@@ -74,6 +45,7 @@ interface BallState {
   x: number;
   y: number;
   visible: boolean;
+  scale: number;
 }
 
 export default function AnimatedLogo({ 
@@ -158,51 +130,56 @@ export default function AnimatedLogo({
           x: rect.left + vertices.red.cx * scaleX,
           y: rect.top + vertices.red.cy * scaleY,
           visible: true,
+          scale: 1,
         });
         setGreenBall({
           x: rect.left + vertices.green.cx * scaleX,
           y: rect.top + vertices.green.cy * scaleY,
           visible: true,
+          scale: 1,
         });
         setBlueBall({
           x: rect.left + vertices.blue.cx * scaleX,
           y: rect.top + vertices.blue.cy * scaleY,
           visible: true,
+          scale: 1,
         });
       }
     }, 2600);
     
-    // Start transition - move balls to orbital positions
+    // Calculate target scale: shrink balls to match planet size
+    const currentBallSize = (vertices.red.r / svgData.viewBox.width) * size * 2;
+    const isMobile = Math.min(window.innerWidth, window.innerHeight) < 600;
+    const socialPlanetSize = isMobile ? 10 + 3 * 1.5 : 12 + 3 * 2; // must match ProjectPlanets
+    const targetScale = socialPlanetSize / currentBallSize;
+
+    // Start transition - move balls to orbital positions and shrink to planet size
     const transitionTimer = setTimeout(() => {
       setPhase('transitioning');
-      
-      // Animate balls to orbital positions
-      setRedBall(prev => prev ? { ...prev, x: orbitalPositions.red.x, y: orbitalPositions.red.y } : null);
-      setGreenBall(prev => prev ? { ...prev, x: orbitalPositions.green.x, y: orbitalPositions.green.y } : null);
-      setBlueBall(prev => prev ? { ...prev, x: orbitalPositions.blue.x, y: orbitalPositions.blue.y } : null);
+
+      // Animate balls to orbital positions with shrink
+      setRedBall(prev => prev ? { ...prev, x: orbitalPositions.red.x, y: orbitalPositions.red.y, scale: targetScale } : null);
+      setGreenBall(prev => prev ? { ...prev, x: orbitalPositions.green.x, y: orbitalPositions.green.y, scale: targetScale } : null);
+      setBlueBall(prev => prev ? { ...prev, x: orbitalPositions.blue.x, y: orbitalPositions.blue.y, scale: targetScale } : null);
     }, 4600);
-    
-    // Balls arrived
+
+    // Balls arrived - fade out
     const arrivedTimer = setTimeout(() => {
       setPhase('arrived');
       onBallsInPosition?.();
-    }, 6400);
-    
-    // Hide balls
-    const hideTimer = setTimeout(() => {
+      // Fade out balls now that planets are visible in their place
       setRedBall(prev => prev ? { ...prev, visible: false } : null);
       setGreenBall(prev => prev ? { ...prev, visible: false } : null);
       setBlueBall(prev => prev ? { ...prev, visible: false } : null);
-    }, 6500);
-    
-    const hiddenTimer = setTimeout(() => setPhase('hidden'), 6800);
+    }, 6400);
+
+    const hiddenTimer = setTimeout(() => setPhase('hidden'), 6900);
     
     return () => {
       clearTimeout(buildTimer);
       clearTimeout(builtTimer);
       clearTimeout(transitionTimer);
       clearTimeout(arrivedTimer);
-      clearTimeout(hideTimer);
       clearTimeout(hiddenTimer);
     };
   }, [svgData, vertices, orbitalPositions, onAnimationComplete, onBallsInPosition]);
@@ -352,10 +329,10 @@ export default function AnimatedLogo({
                 height: ballSize,
                 borderRadius: '50%',
                 backgroundColor: bottomLeft.fill,
-                transform: 'translate(-50%, -50%)',
-                transition: 'left 1.8s cubic-bezier(0.25, 0.1, 0.25, 1), top 1.8s cubic-bezier(0.25, 0.1, 0.25, 1), opacity 0.3s ease',
+                transform: `translate(-50%, -50%) scale(${redBall.scale})`,
+                transition: 'left 1.8s cubic-bezier(0.25, 0.1, 0.25, 1), top 1.8s cubic-bezier(0.25, 0.1, 0.25, 1), transform 1.8s cubic-bezier(0.25, 0.1, 0.25, 1), box-shadow 1.8s cubic-bezier(0.25, 0.1, 0.25, 1), opacity 0.5s ease',
                 opacity: redBall.visible ? 1 : 0,
-                boxShadow: `0 0 ${ballSize}px ${bottomLeft.fill}`,
+                boxShadow: `0 0 ${ballSize * redBall.scale}px ${bottomLeft.fill}`,
               }}
             />
           )}
@@ -370,10 +347,10 @@ export default function AnimatedLogo({
                 height: ballSize,
                 borderRadius: '50%',
                 backgroundColor: topLeft.fill,
-                transform: 'translate(-50%, -50%)',
-                transition: 'left 1.8s cubic-bezier(0.25, 0.1, 0.25, 1) 0.1s, top 1.8s cubic-bezier(0.25, 0.1, 0.25, 1) 0.1s, opacity 0.3s ease',
+                transform: `translate(-50%, -50%) scale(${greenBall.scale})`,
+                transition: 'left 1.8s cubic-bezier(0.25, 0.1, 0.25, 1) 0.1s, top 1.8s cubic-bezier(0.25, 0.1, 0.25, 1) 0.1s, transform 1.8s cubic-bezier(0.25, 0.1, 0.25, 1) 0.1s, box-shadow 1.8s cubic-bezier(0.25, 0.1, 0.25, 1) 0.1s, opacity 0.5s ease',
                 opacity: greenBall.visible ? 1 : 0,
-                boxShadow: `0 0 ${ballSize}px ${topLeft.fill}`,
+                boxShadow: `0 0 ${ballSize * greenBall.scale}px ${topLeft.fill}`,
               }}
             />
           )}
@@ -388,10 +365,10 @@ export default function AnimatedLogo({
                 height: ballSize,
                 borderRadius: '50%',
                 backgroundColor: right.fill,
-                transform: 'translate(-50%, -50%)',
-                transition: 'left 1.8s cubic-bezier(0.25, 0.1, 0.25, 1) 0.2s, top 1.8s cubic-bezier(0.25, 0.1, 0.25, 1) 0.2s, opacity 0.3s ease',
+                transform: `translate(-50%, -50%) scale(${blueBall.scale})`,
+                transition: 'left 1.8s cubic-bezier(0.25, 0.1, 0.25, 1) 0.2s, top 1.8s cubic-bezier(0.25, 0.1, 0.25, 1) 0.2s, transform 1.8s cubic-bezier(0.25, 0.1, 0.25, 1) 0.2s, box-shadow 1.8s cubic-bezier(0.25, 0.1, 0.25, 1) 0.2s, opacity 0.5s ease',
                 opacity: blueBall.visible ? 1 : 0,
-                boxShadow: `0 0 ${ballSize}px ${right.fill}`,
+                boxShadow: `0 0 ${ballSize * blueBall.scale}px ${right.fill}`,
               }}
             />
           )}
