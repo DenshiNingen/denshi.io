@@ -71,6 +71,14 @@ export const projectPlanets: Planet[] = [
     color: '#00FF9D', // Oscilloscope Green
     mass: 4,
   },
+  {
+    id: 'cassiopea',
+    name: 'Cassiopea Sound System',
+    description: 'Hand-building a soundsystem with friends, watt by watt',
+    url: 'https://www.cassiopeasound.works',
+    color: '#1A3Fa0', // Deep blue
+    mass: 4,
+  },
 ];
 
 // Dummy decorative planets (no tooltip, just draggable)
