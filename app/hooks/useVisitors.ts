@@ -69,7 +69,7 @@ export function useVisitors() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const currentUserInfoRef = useRef<VisitorInfo | null>(null);
+  const [currentUserInfo, setCurrentUserInfo] = useState<VisitorInfo | null>(null);
   const [privateNotifications, setPrivateNotifications] = useState<Record<string, PrivateMessageNotification>>({});
   const [privateMessages, setPrivateMessages] = useState<Record<string, PrivateChatMessage[]>>({});
 
@@ -108,7 +108,7 @@ export function useVisitors() {
 
   const addVisitor = useCallback((member: PusherMember, isCurrentUser: boolean = false) => {
     if (isCurrentUser) {
-      currentUserInfoRef.current = member.info;
+      setCurrentUserInfo(member.info);
     }
     
     setVisitors(prev => {
@@ -136,7 +136,7 @@ export function useVisitors() {
   }, []);
 
   const sendMessage = useCallback(async (message: string) => {
-    if (!currentUserId || !currentUserInfoRef.current || !message.trim()) {
+    if (!currentUserId || !currentUserInfo || !message.trim()) {
       return false;
     }
     
@@ -147,8 +147,8 @@ export function useVisitors() {
         body: JSON.stringify({
           message: message.trim(),
           senderId: currentUserId,
-          senderName: currentUserInfoRef.current.name,
-          senderFlag: currentUserInfoRef.current.flag,
+          senderName: currentUserInfo.name,
+          senderFlag: currentUserInfo.flag,
         }),
       });
       
@@ -157,7 +157,7 @@ export function useVisitors() {
       console.error('Failed to send message:', error);
       return false;
     }
-  }, [currentUserId]);
+  }, [currentUserId, currentUserInfo]);
 
   // Load global messages from Redis on mount
   useEffect(() => {
@@ -278,8 +278,8 @@ export function useVisitors() {
     currentUserId,
     messages,
     sendMessage,
-    currentUserName: currentUserInfoRef.current?.name || null,
-    currentUserFlag: currentUserInfoRef.current?.flag || null,
+    currentUserName: currentUserInfo?.name || null,
+    currentUserFlag: currentUserInfo?.flag || null,
     privateNotifications,
     clearPrivateNotification,
     getPrivateMessages,
@@ -287,4 +287,3 @@ export function useVisitors() {
     setPrivateMessagesForChannel,
   };
 }
-

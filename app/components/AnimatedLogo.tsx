@@ -182,7 +182,7 @@ export default function AnimatedLogo({
       clearTimeout(arrivedTimer);
       clearTimeout(hiddenTimer);
     };
-  }, [svgData, vertices, orbitalPositions, onAnimationComplete, onBallsInPosition]);
+  }, [svgData, vertices, orbitalPositions, size, onAnimationComplete, onBallsInPosition]);
 
   // Return nothing if animation is skipped or hidden
   if (skipAnimation || phase === 'hidden') {

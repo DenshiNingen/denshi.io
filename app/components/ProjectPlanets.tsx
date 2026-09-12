@@ -63,6 +63,8 @@ interface PlanetPosition {
   x: number;
   y: number;
   planet: Planet;
+  size: number;
+  isFreed: boolean;
 }
 
 interface Connection {
@@ -92,8 +94,10 @@ export default function ProjectPlanets({
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [nearPlanetId, setNearPlanetId] = useState<string | null>(null);
   const [orbitRadii, setOrbitRadii] = useState<number[]>([]);
-  const [socialOrbiting, setSocialOrbiting] = useState(false);
-  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const [isTouchDevice] = useState(
+    () => typeof window !== 'undefined'
+      && ('ontouchstart' in window || navigator.maxTouchPoints > 0),
+  );
   const [highlightExplorers, setHighlightExplorers] = useState(false);
   const [showCounter, setShowCounter] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
@@ -120,12 +124,6 @@ export default function ProjectPlanets({
   useEffect(() => {
     onPositionsGeneratedRef.current = onPositionsGenerated;
   }, [onPositionsGenerated]);
-
-  // Detect touch device on mount
-  useEffect(() => {
-    const hasTouchCapability = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-    setIsTouchDevice(hasTouchCapability);
-  }, []);
 
   // Initialize planets with Kepler-like orbital mechanics
   useEffect(() => {
@@ -295,14 +293,17 @@ export default function ProjectPlanets({
 
   // Start social planets orbiting after delay
   useEffect(() => {
-    if (!visible || socialOrbitDelay <= 0) {
-      setSocialOrbiting(true);
+    if (!visible) {
+      socialOrbitingRef.current = false;
+      return;
+    }
+
+    if (socialOrbitDelay <= 0) {
       socialOrbitingRef.current = true;
       return;
     }
     
     const timer = setTimeout(() => {
-      setSocialOrbiting(true);
       socialOrbitingRef.current = true;
     }, socialOrbitDelay);
     
@@ -330,6 +331,8 @@ export default function ProjectPlanets({
             x: pd.freedX || centerRef.current.x,
             y: pd.freedY || centerRef.current.y,
             planet: pd.planet,
+            size: pd.size,
+            isFreed: pd.isFreed,
           };
         }
 
@@ -341,6 +344,8 @@ export default function ProjectPlanets({
             x: centerRef.current.x + Math.cos(pd.angle) * pd.orbitRadius,
             y: centerRef.current.y + Math.sin(pd.angle) * pd.orbitRadius,
             planet: pd.planet,
+            size: pd.size,
+            isFreed: pd.isFreed,
           };
         }
 
@@ -352,6 +357,8 @@ export default function ProjectPlanets({
           x: centerRef.current.x + Math.cos(pd.angle) * pd.orbitRadius,
           y: centerRef.current.y + Math.sin(pd.angle) * pd.orbitRadius,
           planet: pd.planet,
+          size: pd.size,
+          isFreed: pd.isFreed,
         };
       });
 
@@ -601,7 +608,6 @@ export default function ProjectPlanets({
     if (chatOpen) {
       // When chat opens, mark all as read
       lastSeenMessageCountRef.current = messages.length;
-      setUnreadCount(0);
     } else if (initialLoadDoneRef.current) {
       // When chat is closed, count new messages (only after initial load)
       const newMessages = messages.length - lastSeenMessageCountRef.current;
@@ -609,6 +615,14 @@ export default function ProjectPlanets({
         setUnreadCount(newMessages);
       }
     }
+  }, [chatOpen, messages.length]);
+
+  const handleChatToggle = useCallback(() => {
+    if (!chatOpen) {
+      lastSeenMessageCountRef.current = messages.length;
+      setUnreadCount(0);
+    }
+    setChatOpen(open => !open);
   }, [chatOpen, messages.length]);
 
   const handleClick = useCallback((e: React.MouseEvent, planet: Planet) => {
@@ -667,12 +681,9 @@ export default function ProjectPlanets({
         ))}
       </svg>
 
-      {positions.map(({ x, y, planet }) => {
+      {positions.map(({ x, y, planet, size: planetSize, isFreed }) => {
         const isDragging = draggingId === planet.id;
         const isNear = nearPlanetId === planet.id && !isDragging;
-        const planetData = planetsRef.current.find(p => p.planet.id === planet.id);
-        const isFreed = planetData?.isFreed || false;
-        const planetSize = planetData?.size || 10;
         const isSocial = planet.isSocialPlanet;
         const isDummy = planet.isDummy;
         const isVisitor = planet.isVisitor;
@@ -778,7 +789,7 @@ export default function ProjectPlanets({
           className={`visitor-counter ${showCounter ? 'visible' : ''} ${chatOpen ? 'chat-open' : ''} ${unreadCount > 0 && !chatOpen ? 'has-unread' : ''}`}
           onMouseEnter={() => setHighlightExplorers(true)}
           onMouseLeave={() => setHighlightExplorers(false)}
-          onDoubleClick={() => setChatOpen(!chatOpen)}
+          onDoubleClick={handleChatToggle}
         >
           <div className="visitor-count">
             <MatrixText 
