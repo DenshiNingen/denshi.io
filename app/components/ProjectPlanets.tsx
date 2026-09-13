@@ -783,6 +783,18 @@ export default function ProjectPlanets({
         );
       })}
 
+      {visible && (
+        <div className="navigation-hint" role="note">
+          <span className="navigation-hint-marker" aria-hidden="true">✦</span>
+          <MatrixText
+            text="Explore my universe — choose a planet"
+            startDelay={400}
+            charRevealTime={24}
+            scrambleIterations={2}
+          />
+        </div>
+      )}
+
       {/* Visitor counter */}
       {showCounter && visitorCount > 0 && (
         <div 
@@ -1272,6 +1284,54 @@ export default function ProjectPlanets({
           border-color: rgba(255, 255, 255, 0.3) !important;
         }
 
+        .navigation-hint {
+          position: fixed;
+          bottom: clamp(1rem, 3vw, 2rem);
+          left: 50%;
+          display: flex;
+          align-items: center;
+          gap: 0.65rem;
+          z-index: 50;
+          max-width: calc(100vw - 2rem);
+          color: rgba(255, 255, 255, 0.52);
+          font-family: 'Orbitron', monospace;
+          font-size: clamp(0.55rem, 1vw, 0.7rem);
+          letter-spacing: 0.16em;
+          line-height: 1.5;
+          text-align: center;
+          text-transform: uppercase;
+          text-shadow: 0 0 12px rgba(255, 255, 255, 0.2);
+          white-space: nowrap;
+          pointer-events: none;
+          opacity: 0;
+          transform: translate(-50%, 10px);
+          animation: navigation-hint-appear 0.8s ease 0.35s forwards;
+        }
+
+        .navigation-hint-marker {
+          color: rgba(255, 255, 255, 0.8);
+          font-size: 0.7rem;
+          animation: navigation-hint-pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes navigation-hint-appear {
+          to {
+            opacity: 1;
+            transform: translate(-50%, 0);
+          }
+        }
+
+        @keyframes navigation-hint-pulse {
+          0%, 100% {
+            opacity: 0.35;
+            transform: scale(0.85);
+          }
+          50% {
+            opacity: 1;
+            transform: scale(1.15);
+          }
+        }
+
         .visitor-info {
           margin-top: 8px;
           padding-top: 8px;
@@ -1418,6 +1478,14 @@ export default function ProjectPlanets({
         }
 
         @media (max-width: 600px) {
+          .navigation-hint {
+            bottom: 1rem;
+            width: calc(100vw - 7rem);
+            justify-content: center;
+            font-size: 0.48rem;
+            letter-spacing: 0.1em;
+            white-space: normal;
+          }
           .planet-tooltip {
             padding: 8px 10px;
           }
